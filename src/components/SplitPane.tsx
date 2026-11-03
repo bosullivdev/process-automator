@@ -43,7 +43,11 @@ export function SplitPane({ ratio, onRatioChange, left, right }: Props) {
   };
 
   return (
-    <div ref={containerRef} className="flex h-full min-h-0 w-full" style={{ cursor: dragging ? "col-resize" : undefined }}>
+    <div
+      ref={containerRef}
+      className="flex h-full min-h-0 w-full"
+      style={{ cursor: dragging ? "col-resize" : undefined }}
+    >
       <div className="min-w-0 min-h-0 overflow-hidden" style={{ width: `${ratio * 100}%` }}>
         {left}
       </div>
@@ -70,7 +74,10 @@ export function SplitPane({ ratio, onRatioChange, left, right }: Props) {
             boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
           }}
         />
-        <div className="absolute top-0 bottom-0 left-0 w-px" style={{ background: "var(--border)" }} />
+        <div
+          className="absolute top-0 bottom-0 left-0 w-px"
+          style={{ background: "var(--border)" }}
+        />
       </div>
       <div className="min-w-0 min-h-0 flex-1 overflow-hidden">{right}</div>
     </div>

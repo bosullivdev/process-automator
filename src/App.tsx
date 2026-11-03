@@ -30,11 +30,20 @@ export default function App() {
       </header>
       {narrow ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex shrink-0 gap-1 border-b p-1" style={{ borderColor: "var(--border)" }}>
-            <button className={`btn ${tab === "table" ? "btn-active" : ""}`} onClick={() => setTab("table")}>
+          <div
+            className="flex shrink-0 gap-1 border-b p-1"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <button
+              className={`btn ${tab === "table" ? "btn-active" : ""}`}
+              onClick={() => setTab("table")}
+            >
               Table
             </button>
-            <button className={`btn ${tab === "map" ? "btn-active" : ""}`} onClick={() => setTab("map")}>
+            <button
+              className={`btn ${tab === "map" ? "btn-active" : ""}`}
+              onClick={() => setTab("map")}
+            >
               Map
             </button>
           </div>
