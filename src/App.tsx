@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SplitPane } from "./components/SplitPane";
 import { StepTable } from "./components/table/StepTable";
+import { ValidationPanel } from "./components/ValidationPanel";
 import { Toaster } from "./components/ui/Toaster";
 import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
 import { useApplyTheme } from "./hooks/useTheme";
@@ -15,6 +16,8 @@ export default function App() {
   const hydrated = useStore((s) => s.hydrated);
   const parties = useStore((s) => s.parties);
   const process = useStore(selectActiveProcess);
+  const selectStep = useStore((s) => s.selectStep);
+  const removeLink = useStore((s) => s.removeLink);
   const [tab, setTab] = useState<"table" | "map">("table");
   const narrow = useMediaQuery(NARROW_QUERY);
   useApplyTheme();
@@ -51,7 +54,23 @@ export default function App() {
 
   if (!hydrated || !process) return null;
 
-  const table = <StepTable process={process} flags={flagMap} />;
+  const table = (
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1">
+        <StepTable process={process} flags={flagMap} />
+      </div>
+      <ValidationPanel
+        flags={flags}
+        onSelectStep={(id) => {
+          selectStep(id);
+          const row = document.querySelector<HTMLElement>(`[data-step-id="${id}"]`);
+          row?.scrollIntoView({ block: "nearest" });
+          row?.querySelector<HTMLInputElement>("input")?.focus();
+        }}
+        onRemoveLink={(stepId, targetId) => removeLink(process.id, stepId, targetId)}
+      />
+    </div>
+  );
   const map = <div className="h-full p-4 text-sm text-[var(--text-muted)]">Map</div>;
 
   return (
