@@ -7,8 +7,11 @@ export const UNASSIGNED_LANE = "__unassigned";
 export interface NodeText {
   /** Wrapped name lines, sized to the shape (or to the outside label width). */
   nameLines: string[];
-  /** Technology line, already fitted to one line. */
+  /** Technology line, already fitted to one line, and the width of its pill. */
   tech?: string;
+  techWidth: number;
+  /** Number of contributor badges to draw (0 in minimal mode). */
+  badges: number;
   /** Whether the name is drawn outside the shape (start, end, decision). */
   outside: boolean;
   /** Outside label box size (0 when the name is inside). */

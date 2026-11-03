@@ -2,9 +2,8 @@ import type { Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import type { LayoutNode, PositionedNode } from "../../graph/layout-types";
 import type { ResolvedColour } from "../../design/palette";
-import { BADGE_ROW, BADGE_SIZE, TECH_ROW } from "../../graph/build-graph";
+import { BADGE_GAP, BADGE_ROW, BADGE_SIZE, TECH_GAP, TECH_ROW } from "../../graph/build-graph";
 import { partyInitials } from "../../model/party";
-import { estimateTextWidth } from "./text";
 
 export const MONO_FONT = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace';
 
@@ -151,28 +150,39 @@ export function MapNode({
 
   const isTask = kind === "task";
   const nameLines = text.nameLines;
-  const showTech = isTask && !!text.tech;
-  const hasBadges = isTask && (colours.contributors.length > 0 || !!step?.isSubProcess);
-  // Inside the task: name lines, then the technology pill, then the badge row; the
-  // whole block is centred vertically, matching the height reserved by sizeStep.
-  const blockH =
-    nameLines.length * LINE_H + (showTech ? TECH_ROW : 0) + (hasBadges ? BADGE_ROW : 0);
-  const blockTop = cy - blockH / 2;
-  const techW = showTech ? estimateTextWidth(text.tech!, 10) + 12 : 0;
-  const techY = blockTop + nameLines.length * LINE_H + TECH_ROW / 2;
-  const badgeY = blockTop + nameLines.length * LINE_H + (showTech ? TECH_ROW : 0) + BADGE_ROW / 2;
+  const showTech = !!text.tech;
+  const badges = colours.contributors.slice(0, text.badges);
+  const hasBadgeRow = badges.length > 0 || (isTask && !!step?.isSubProcess);
+  const techW = text.techWidth;
+  const badgesW = badges.length ? badges.length * (BADGE_SIZE + BADGE_GAP) - BADGE_GAP : 0;
+
+  // The annotation block (name, technology pill, badges) sits inside a task and
+  // beside or below the other shapes, on the side chosen by the layout.
   const outside = text.outside;
   const side = node.labelSide;
   const labelRight = outside && side === "right";
   const labelLeft = outside && side === "left";
-  const labelX = labelRight ? x + width + 4 : labelLeft ? x - 4 : cx;
-  const labelTop =
-    labelRight || labelLeft
-      ? cy - text.labelHeight / 2
+  const blockH =
+    nameLines.length * LINE_H +
+    (showTech ? TECH_GAP + TECH_ROW : 0) +
+    (hasBadgeRow ? BADGE_ROW : 0);
+  const blockTop = !outside
+    ? cy - blockH / 2
+    : labelRight || labelLeft
+      ? cy - blockH / 2
       : side === "above"
-        ? y - 4 - text.labelHeight
+        ? y - 4 - blockH
         : y + height + 4;
+  const labelX = labelRight ? x + width + 4 : labelLeft ? x - 4 : cx;
   const anchor = labelRight ? "start" : labelLeft ? "end" : "middle";
+  /** Left edge of an element of width w, aligned like the text. */
+  const alignLeft = (w: number) => (labelRight ? labelX : labelLeft ? labelX - w : cx - w / 2);
+  const techY = blockTop + nameLines.length * LINE_H + TECH_GAP + TECH_ROW / 2;
+  const badgeY =
+    blockTop + nameLines.length * LINE_H + (showTech ? TECH_GAP + TECH_ROW : 0) + BADGE_ROW / 2;
+  // Inside a task, badges hug the left padding; outside they follow the text alignment.
+  const badgesLeft = isTask ? x + 10 : alignLeft(badgesW);
+  const techLeft = isTask ? cx - techW / 2 : alignLeft(techW);
 
   return (
     <g
@@ -198,9 +208,9 @@ export function MapNode({
       {shape}
       {step && nameLines.length > 0 && (
         <text
-          x={outside ? labelX : cx}
-          y={outside ? labelTop + LINE_H / 2 : blockTop + LINE_H / 2}
-          textAnchor={outside ? anchor : "middle"}
+          x={labelX}
+          y={blockTop + LINE_H / 2}
+          textAnchor={anchor}
           dominantBaseline="central"
           fontSize={outside ? 11 : 12}
           fontWeight={500}
@@ -208,7 +218,7 @@ export function MapNode({
           style={{ pointerEvents: "none" }}
         >
           {nameLines.map((line, i) => (
-            <tspan key={i} x={outside ? labelX : cx} dy={i === 0 ? 0 : LINE_H}>
+            <tspan key={i} x={labelX} dy={i === 0 ? 0 : LINE_H}>
               {line}
             </tspan>
           ))}
@@ -217,7 +227,7 @@ export function MapNode({
       {showTech && (
         <g style={{ pointerEvents: "none" }}>
           <rect
-            x={cx - techW / 2}
+            x={techLeft}
             y={techY - 8}
             width={techW}
             height={16}
@@ -227,7 +237,7 @@ export function MapNode({
             strokeWidth={1}
           />
           <text
-            x={cx}
+            x={techLeft + techW / 2}
             y={techY}
             textAnchor="middle"
             dominantBaseline="central"
@@ -240,35 +250,34 @@ export function MapNode({
           </text>
         </g>
       )}
-      {isTask &&
-        colours.contributors.map((c, i) => {
-          const bx = x + 10 + i * (BADGE_SIZE + 4) + BADGE_SIZE / 2;
-          return (
-            <g key={c.id}>
-              <title>{`Contributor: ${c.name}`}</title>
-              <circle
-                cx={bx}
-                cy={badgeY}
-                r={BADGE_SIZE / 2}
-                fill={c.colour.fill}
-                stroke="var(--surface)"
-                strokeWidth={1}
-              />
-              <text
-                x={bx}
-                y={badgeY}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={8}
-                fontWeight={700}
-                fill={c.colour.text}
-                style={{ pointerEvents: "none" }}
-              >
-                {partyInitials(c.name)}
-              </text>
-            </g>
-          );
-        })}
+      {badges.map((c, i) => {
+        const bx = badgesLeft + i * (BADGE_SIZE + BADGE_GAP) + BADGE_SIZE / 2;
+        return (
+          <g key={c.id}>
+            <title>{`Contributor: ${c.name}`}</title>
+            <circle
+              cx={bx}
+              cy={badgeY}
+              r={BADGE_SIZE / 2}
+              fill={c.colour.fill}
+              stroke="var(--surface)"
+              strokeWidth={1}
+            />
+            <text
+              x={bx}
+              y={badgeY}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={8}
+              fontWeight={700}
+              fill={c.colour.text}
+              style={{ pointerEvents: "none" }}
+            >
+              {partyInitials(c.name)}
+            </text>
+          </g>
+        );
+      })}
       {isTask && step?.isSubProcess && (
         <g
           transform={`translate(${x + width - 10 - 12}, ${badgeY - 6})`}

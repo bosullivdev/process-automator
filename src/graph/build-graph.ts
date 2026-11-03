@@ -10,14 +10,16 @@ import {
   type NodeText,
   type Orientation,
 } from "./layout-types";
-import { linesWidth, wrapToWidth } from "./text-metrics";
+import { linesWidth, measureText, wrapToWidth } from "./text-metrics";
 
 const NAME_SIZE = 12;
 const SUB_SIZE = 10;
-/** Height of the technology pill row and the contributor badge row inside a task. */
+/** Technology pill row: a gap above it, then the pill. Badge row holds the contributor badges. */
+export const TECH_GAP = 6;
 export const TECH_ROW = 20;
 export const BADGE_ROW = 24;
 export const BADGE_SIZE = 18;
+export const BADGE_GAP = 4;
 export type Annotations = "full" | "minimal";
 const OUTSIDE_SIZE = 11;
 const LINE_H = 14;
@@ -42,7 +44,15 @@ function sizeGateway(kind: "fork" | "join"): Sized {
     shapeHeight: height,
     cx: width / 2,
     cy: height / 2,
-    text: { nameLines: [], outside: false, labelWidth: 0, labelHeight: 0, symmetric: false },
+    text: {
+      nameLines: [],
+      techWidth: 0,
+      badges: 0,
+      outside: false,
+      labelWidth: 0,
+      labelHeight: 0,
+      symmetric: false,
+    },
   };
 }
 
@@ -61,21 +71,23 @@ export function sizeStep(
 ): Sized {
   const kind: LayoutNodeKind = step.type;
   const name = step.name.trim() || "Untitled";
+  const full = annotations === "full";
+  const badges = full ? step.contributorIds.length : 0;
+  const badgesWidth = badges ? badges * (BADGE_SIZE + BADGE_GAP) - BADGE_GAP : 0;
+  const techText = full ? step.technology.trim() : "";
+
   if (kind === "task") {
     const { width } = NODE_SIZE.task;
     const inner = width - TASK_PAD_X * 2;
     const nameLines = wrapToWidth(name, inner, NAME_SIZE, MAX_NAME_LINES, 500);
-    const full = annotations === "full";
-    const tech =
-      full && step.technology.trim()
-        ? wrapToWidth(step.technology.trim(), inner - 16, SUB_SIZE, 1)[0]
-        : undefined;
-    const hasBadges = (full && step.contributorIds.length > 0) || !!step.isSubProcess;
+    const tech = techText ? wrapToWidth(techText, inner - 16, SUB_SIZE, 1)[0] : undefined;
+    const techWidth = tech ? Math.ceil(measureText(tech, SUB_SIZE)) + 16 : 0;
+    const hasBadges = badges > 0 || !!step.isSubProcess;
     const height = Math.max(
       NODE_SIZE.task.height,
       TASK_PAD_Y * 2 +
         nameLines.length * LINE_H +
-        (tech ? TECH_ROW : 0) +
+        (tech ? TECH_GAP + TECH_ROW : 0) +
         (hasBadges ? BADGE_ROW : 0),
     );
     return {
@@ -85,18 +97,36 @@ export function sizeStep(
       shapeHeight: height,
       cx: width / 2,
       cy: height / 2,
-      text: { nameLines, tech, outside: false, labelWidth: 0, labelHeight: 0, symmetric: false },
+      text: {
+        nameLines,
+        tech,
+        techWidth,
+        badges,
+        outside: false,
+        labelWidth: 0,
+        labelHeight: 0,
+        symmetric: false,
+      },
     };
   }
   const { width: sw, height: sh } = NODE_SIZE[kind];
   const nameLines = wrapToWidth(name, OUTSIDE_MAX_WIDTH, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
-  const labelWidth = Math.ceil(linesWidth(nameLines, OUTSIDE_SIZE, 500));
-  const labelHeight = nameLines.length * LINE_H;
+  const tech = techText ? wrapToWidth(techText, OUTSIDE_MAX_WIDTH - 16, SUB_SIZE, 1)[0] : undefined;
+  const techWidth = tech ? Math.ceil(measureText(tech, SUB_SIZE)) + 16 : 0;
+  // The outside label block: name lines, then the technology pill, then badges.
+  const labelWidth = Math.ceil(
+    Math.max(linesWidth(nameLines, OUTSIDE_SIZE, 500), techWidth, badgesWidth),
+  );
+  const labelHeight =
+    nameLines.length * LINE_H + (tech ? TECH_GAP + TECH_ROW : 0) + (badges ? BADGE_ROW : 0);
   // A node with several outgoing links may send one of them out of the top or
   // bottom of the shape; the name then moves to the other side, so reserve
   // label space on both sides.
   const text: NodeText = {
     nameLines,
+    tech,
+    techWidth,
+    badges,
     outside: true,
     labelWidth,
     labelHeight,

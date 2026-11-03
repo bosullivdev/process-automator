@@ -73,3 +73,29 @@ describe("annotations", () => {
     expect(minimal.height).toBeLessThan(full.height);
   });
 });
+
+describe("annotations on outside-label nodes", () => {
+  it("reserves room under a decision's name for its technology pill and badges", () => {
+    const plain = process([step({ id: "d", displayNo: 1, type: "decision", name: "Approved?" })]);
+    const rich = process([
+      step({
+        id: "d",
+        displayNo: 1,
+        type: "decision",
+        name: "Approved?",
+        technology: "ServiceNow",
+        contributorIds: ["a", "b", "c"],
+      }),
+    ]);
+    const a = buildLayoutGraph(plain, [], "simple", "horizontal").nodes[0];
+    const b = buildLayoutGraph(rich, [], "simple", "horizontal").nodes[0];
+    expect(b.text.tech).toBe("ServiceNow");
+    expect(b.text.badges).toBe(3);
+    expect(b.text.labelHeight).toBeGreaterThan(a.text.labelHeight);
+    expect(b.height).toBeGreaterThan(a.height);
+    expect(b.text.labelWidth).toBeGreaterThanOrEqual(b.text.techWidth);
+    const minimal = buildLayoutGraph(rich, [], "simple", "horizontal", "minimal").nodes[0];
+    expect(minimal.text.badges).toBe(0);
+    expect(minimal.height).toBe(a.height);
+  });
+});
