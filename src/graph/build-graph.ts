@@ -57,11 +57,13 @@ function sizeGateway(kind: "fork" | "join"): Sized {
 }
 
 /**
- * Size a step's node to its content. Tasks keep a fixed width and grow in
- * height; start, end and decision shapes keep their size and carry the name
- * outside: below the shape when flow runs left-to-right, to the right of it
- * when flow runs top-to-bottom. The box includes that label so rows reserve
- * room for it; edges attach to the shape via (cx, cy).
+ * Size a step's node to its content. A task keeps its name inside a fixed-width
+ * box that grows in height; start, end and decision shapes keep their size and
+ * carry the name outside. Every kind carries its technology pill and
+ * contributor badges outside the shape, in one annotation block together with
+ * an outside name: below the shape when flow runs left-to-right, to the right
+ * of it when flow runs top-to-bottom. The box includes that block so rows
+ * reserve room for it; edges attach to the shape via (cx, cy).
  */
 export function sizeStep(
   step: Step,
@@ -75,72 +77,57 @@ export function sizeStep(
   const badges = full ? step.contributorIds.length : 0;
   const badgesWidth = badges ? badges * (BADGE_SIZE + BADGE_GAP) - BADGE_GAP : 0;
   const techText = full ? step.technology.trim() : "";
-
-  if (kind === "task") {
-    const { width } = NODE_SIZE.task;
-    const inner = width - TASK_PAD_X * 2;
-    const nameLines = wrapToWidth(name, inner, NAME_SIZE, MAX_NAME_LINES, 500);
-    const tech = techText ? wrapToWidth(techText, inner - 16, SUB_SIZE, 1)[0] : undefined;
-    const techWidth = tech ? Math.ceil(measureText(tech, SUB_SIZE)) + 16 : 0;
-    const hasBadges = badges > 0 || !!step.isSubProcess;
-    const height = Math.max(
-      NODE_SIZE.task.height,
-      TASK_PAD_Y * 2 +
-        nameLines.length * LINE_H +
-        (tech ? TECH_GAP + TECH_ROW : 0) +
-        (hasBadges ? BADGE_ROW : 0),
-    );
-    return {
-      width,
-      height,
-      shapeWidth: width,
-      shapeHeight: height,
-      cx: width / 2,
-      cy: height / 2,
-      text: {
-        nameLines,
-        tech,
-        techWidth,
-        badges,
-        outside: false,
-        labelWidth: 0,
-        labelHeight: 0,
-        symmetric: false,
-      },
-    };
-  }
-  const { width: sw, height: sh } = NODE_SIZE[kind];
-  const nameLines = wrapToWidth(name, OUTSIDE_MAX_WIDTH, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
   const tech = techText ? wrapToWidth(techText, OUTSIDE_MAX_WIDTH - 16, SUB_SIZE, 1)[0] : undefined;
   const techWidth = tech ? Math.ceil(measureText(tech, SUB_SIZE)) + 16 : 0;
-  // The outside label block: name lines, then the technology pill, then badges.
-  const labelWidth = Math.ceil(
-    Math.max(linesWidth(nameLines, OUTSIDE_SIZE, 500), techWidth, badgesWidth),
-  );
+
+  // Shape and inside text.
+  let sw: number;
+  let sh: number;
+  let nameLines: string[];
+  const outside = kind !== "task";
+  if (kind === "task") {
+    sw = NODE_SIZE.task.width;
+    nameLines = wrapToWidth(name, sw - TASK_PAD_X * 2, NAME_SIZE, MAX_NAME_LINES, 500);
+    sh = Math.max(
+      NODE_SIZE.task.height,
+      TASK_PAD_Y * 2 + nameLines.length * LINE_H + (step.isSubProcess ? 12 : 0),
+    );
+  } else {
+    ({ width: sw, height: sh } = NODE_SIZE[kind]);
+    nameLines = wrapToWidth(name, OUTSIDE_MAX_WIDTH, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
+  }
+
+  // Outside block: name lines (non-task), then the technology pill, then badges.
+  const nameH = outside ? nameLines.length * LINE_H : 0;
+  const nameW = outside ? linesWidth(nameLines, OUTSIDE_SIZE, 500) : 0;
   const labelHeight =
-    nameLines.length * LINE_H + (tech ? TECH_GAP + TECH_ROW : 0) + (badges ? BADGE_ROW : 0);
-  // A node with several outgoing links may send one of them out of the top or
-  // bottom of the shape; the name then moves to the other side, so reserve
-  // label space on both sides.
+    nameH + (tech ? (nameH ? TECH_GAP : 0) + TECH_ROW : 0) + (badges ? BADGE_ROW : 0);
+  const labelWidth = Math.ceil(Math.max(nameW, techWidth, badgesWidth));
   const text: NodeText = {
     nameLines,
     tech,
     techWidth,
     badges,
-    outside: true,
+    outside,
     labelWidth,
     labelHeight,
-    symmetric: multiExit,
+    symmetric: multiExit && labelHeight > 0,
   };
+  if (labelHeight === 0) {
+    return { width: sw, height: sh, shapeWidth: sw, shapeHeight: sh, cx: sw / 2, cy: sh / 2, text };
+  }
+  // A node with several outgoing links may send one of them out of the top or
+  // bottom of the shape; the block then moves to the other side, so reserve
+  // space on both sides.
   const reserve = multiExit ? 2 : 1;
   if (orientation === "horizontal") {
     const extra = OUTSIDE_GAP + labelHeight;
     return {
-      width: sw,
+      width: Math.max(sw, labelWidth),
       height: sh + extra * reserve,
       shapeWidth: sw,
       shapeHeight: sh,
-      cx: sw / 2,
+      cx: Math.max(sw, labelWidth) / 2,
       cy: sh / 2 + (multiExit ? extra : 0),
       text,
     };
@@ -148,11 +135,11 @@ export function sizeStep(
   const extra = OUTSIDE_GAP + labelWidth;
   return {
     width: sw + extra * reserve,
-    height: sh,
+    height: Math.max(sh, labelHeight),
     shapeWidth: sw,
     shapeHeight: sh,
     cx: sw / 2 + (multiExit ? extra : 0),
-    cy: sh / 2,
+    cy: Math.max(sh, labelHeight) / 2,
     text,
   };
 }

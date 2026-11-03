@@ -152,37 +152,31 @@ export function MapNode({
   const nameLines = text.nameLines;
   const showTech = !!text.tech;
   const badges = colours.contributors.slice(0, text.badges);
-  const hasBadgeRow = badges.length > 0 || (isTask && !!step?.isSubProcess);
   const techW = text.techWidth;
   const badgesW = badges.length ? badges.length * (BADGE_SIZE + BADGE_GAP) - BADGE_GAP : 0;
 
-  // The annotation block (name, technology pill, badges) sits inside a task and
-  // beside or below the other shapes, on the side chosen by the layout.
+  // A task's name sits inside the box. Everything else (an outside name, the
+  // technology pill, the badges) forms one block beside or below the shape, on
+  // the side chosen by the layout.
   const outside = text.outside;
   const side = node.labelSide;
-  const labelRight = outside && side === "right";
-  const labelLeft = outside && side === "left";
-  const blockH =
-    nameLines.length * LINE_H +
-    (showTech ? TECH_GAP + TECH_ROW : 0) +
-    (hasBadgeRow ? BADGE_ROW : 0);
-  const blockTop = !outside
-    ? cy - blockH / 2
-    : labelRight || labelLeft
-      ? cy - blockH / 2
-      : side === "above"
-        ? y - 4 - blockH
-        : y + height + 4;
+  const labelRight = side === "right";
+  const labelLeft = side === "left";
+  const nameH = outside ? nameLines.length * LINE_H : 0;
+  const blockH = text.labelHeight;
+  const blockTop =
+    labelRight || labelLeft ? cy - blockH / 2 : side === "above" ? y - 4 - blockH : y + height + 4;
   const labelX = labelRight ? x + width + 4 : labelLeft ? x - 4 : cx;
   const anchor = labelRight ? "start" : labelLeft ? "end" : "middle";
-  /** Left edge of an element of width w, aligned like the text. */
+  /** Left edge of an element of width w, aligned like the block's text. */
   const alignLeft = (w: number) => (labelRight ? labelX : labelLeft ? labelX - w : cx - w / 2);
-  const techY = blockTop + nameLines.length * LINE_H + TECH_GAP + TECH_ROW / 2;
-  const badgeY =
-    blockTop + nameLines.length * LINE_H + (showTech ? TECH_GAP + TECH_ROW : 0) + BADGE_ROW / 2;
-  // Inside a task, badges hug the left padding; outside they follow the text alignment.
-  const badgesLeft = isTask ? x + 10 : alignLeft(badgesW);
-  const techLeft = isTask ? cx - techW / 2 : alignLeft(techW);
+  const techTop = blockTop + nameH + (nameH ? TECH_GAP : 0);
+  const techY = techTop + TECH_ROW / 2;
+  const badgeY = (showTech ? techTop + TECH_ROW : blockTop + nameH) + BADGE_ROW / 2;
+  const badgesLeft = alignLeft(badgesW);
+  const techLeft = alignLeft(techW);
+  // Inside name block for tasks, centred (nudged up when the sub-process marker needs room).
+  const insideTop = cy - (nameLines.length * LINE_H) / 2 - (step?.isSubProcess ? 6 : 0);
 
   return (
     <g
@@ -208,9 +202,9 @@ export function MapNode({
       {shape}
       {step && nameLines.length > 0 && (
         <text
-          x={labelX}
-          y={blockTop + LINE_H / 2}
-          textAnchor={anchor}
+          x={outside ? labelX : cx}
+          y={(outside ? blockTop : insideTop) + LINE_H / 2}
+          textAnchor={outside ? anchor : "middle"}
           dominantBaseline="central"
           fontSize={outside ? 11 : 12}
           fontWeight={500}
@@ -218,7 +212,7 @@ export function MapNode({
           style={{ pointerEvents: "none" }}
         >
           {nameLines.map((line, i) => (
-            <tspan key={i} x={labelX} dy={i === 0 ? 0 : LINE_H}>
+            <tspan key={i} x={outside ? labelX : cx} dy={i === 0 ? 0 : LINE_H}>
               {line}
             </tspan>
           ))}
@@ -280,7 +274,7 @@ export function MapNode({
       })}
       {isTask && step?.isSubProcess && (
         <g
-          transform={`translate(${x + width - 10 - 12}, ${badgeY - 6})`}
+          transform={`translate(${cx - 6}, ${y + height - 16})`}
           stroke={colours.owner.fill}
           fill="none"
           strokeWidth={1.2}

@@ -53,8 +53,9 @@ describe("content-sized nodes", () => {
     const v = buildLayoutGraph(p, [], "simple", "vertical").nodes[0];
     expect(h.text.outside).toBe(true);
     expect(h.height).toBeGreaterThan(h.shapeHeight);
-    expect(h.width).toBe(h.shapeWidth);
-    expect(h.cx).toBe(h.shapeWidth / 2);
+    // The box is as wide as the wider of the shape and its label; the shape stays centred.
+    expect(h.width).toBeGreaterThanOrEqual(h.shapeWidth);
+    expect(h.cx).toBe(h.width / 2);
     expect(v.width).toBeGreaterThan(v.shapeWidth);
     expect(v.height).toBe(v.shapeHeight);
     expect(v.cy).toBe(v.shapeHeight / 2);
@@ -97,5 +98,30 @@ describe("annotations on outside-label nodes", () => {
     const minimal = buildLayoutGraph(rich, [], "simple", "horizontal", "minimal").nodes[0];
     expect(minimal.text.badges).toBe(0);
     expect(minimal.height).toBe(a.height);
+  });
+});
+
+describe("task annotations outside the box", () => {
+  it("keeps the task box to its name and reserves the pill and badges below it", () => {
+    const plain = process([step({ id: "t", displayNo: 1, name: "Pack order" })]);
+    const rich = process([
+      step({
+        id: "t",
+        displayNo: 1,
+        name: "Pack order",
+        technology: "WMS",
+        contributorIds: ["a", "b"],
+      }),
+    ]);
+    const a = buildLayoutGraph(plain, [], "simple", "horizontal").nodes[0];
+    const b = buildLayoutGraph(rich, [], "simple", "horizontal").nodes[0];
+    expect(b.shapeHeight).toBe(a.shapeHeight);
+    expect(b.text.outside).toBe(false);
+    expect(b.text.labelHeight).toBeGreaterThan(0);
+    expect(b.height).toBe(b.shapeHeight + 4 + b.text.labelHeight);
+    expect(b.cy).toBe(b.shapeHeight / 2);
+    const v = buildLayoutGraph(rich, [], "simple", "vertical").nodes[0];
+    expect(v.height).toBe(v.shapeHeight);
+    expect(v.width).toBeGreaterThan(v.shapeWidth);
   });
 });
