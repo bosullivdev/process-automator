@@ -25,8 +25,10 @@ a static site.
   outcome.
 - **Map (right)**: pan by dragging, zoom with Ctrl/Cmd + wheel or the buttons.
   Click a node to select its row and vice versa. Drag a lane header (or focus
-  it and use the arrow keys) to reorder lanes. Orientation and shape mode
-  (simple / BPMN) are toggles in the header.
+  it and use the arrow keys) to reorder lanes. Orientation, shape mode
+  (simple / BPMN) and detail level are toggles in the header. At full detail a
+  task shows its technology as a pill and its contributors as initial badges
+  in party colours; "Minimal" hides both for a cleaner picture.
 - **Validation**: a drawer under the table lists errors and warnings for the
   active process; click one to jump to the step. Broken links offer a
   one-click "Remove link".
@@ -38,7 +40,7 @@ a static site.
   storage can be cleared, so use Export → Workspace JSON for a real copy and
   Import to load it again.
 - **Export**: the active process map as SVG, PNG (2x) or PDF, with a title
-  block and lane legend. Fonts are embedded so exports render the same
+  block and a legend of every party on the map, owners and contributors alike. Fonts are embedded so exports render the same
   everywhere.
 
 ## Development

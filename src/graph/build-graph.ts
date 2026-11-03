@@ -14,6 +14,11 @@ import { linesWidth, wrapToWidth } from "./text-metrics";
 
 const NAME_SIZE = 12;
 const SUB_SIZE = 10;
+/** Height of the technology pill row and the contributor badge row inside a task. */
+export const TECH_ROW = 20;
+export const BADGE_ROW = 24;
+export const BADGE_SIZE = 18;
+export type Annotations = "full" | "minimal";
 const OUTSIDE_SIZE = 11;
 const LINE_H = 14;
 const TASK_PAD_X = 12;
@@ -48,20 +53,30 @@ function sizeGateway(kind: "fork" | "join"): Sized {
  * when flow runs top-to-bottom. The box includes that label so rows reserve
  * room for it; edges attach to the shape via (cx, cy).
  */
-export function sizeStep(step: Step, orientation: Orientation, multiExit = false): Sized {
+export function sizeStep(
+  step: Step,
+  orientation: Orientation,
+  multiExit = false,
+  annotations: Annotations = "full",
+): Sized {
   const kind: LayoutNodeKind = step.type;
   const name = step.name.trim() || "Untitled";
   if (kind === "task") {
     const { width } = NODE_SIZE.task;
     const inner = width - TASK_PAD_X * 2;
     const nameLines = wrapToWidth(name, inner, NAME_SIZE, MAX_NAME_LINES, 500);
-    const tech = step.technology.trim()
-      ? wrapToWidth(step.technology.trim(), inner, SUB_SIZE, 1)[0]
-      : undefined;
-    const hasDots = step.contributorIds.length > 0 || !!step.isSubProcess;
+    const full = annotations === "full";
+    const tech =
+      full && step.technology.trim()
+        ? wrapToWidth(step.technology.trim(), inner - 16, SUB_SIZE, 1)[0]
+        : undefined;
+    const hasBadges = (full && step.contributorIds.length > 0) || !!step.isSubProcess;
     const height = Math.max(
       NODE_SIZE.task.height,
-      TASK_PAD_Y * 2 + nameLines.length * LINE_H + (tech ? LINE_H : 0) + (hasDots ? 10 : 0),
+      TASK_PAD_Y * 2 +
+        nameLines.length * LINE_H +
+        (tech ? TECH_ROW : 0) +
+        (hasBadges ? BADGE_ROW : 0),
     );
     return {
       width,
@@ -133,6 +148,7 @@ export function buildLayoutGraph(
   parties: readonly Party[],
   mode: ShapeMode,
   orientation: Orientation = "horizontal",
+  annotations: Annotations = "full",
 ): LayoutGraph {
   const steps = [...process.steps].sort((a, b) => a.displayNo - b.displayNo);
   const byId = new Map(steps.map((s) => [s.id, s]));
@@ -172,7 +188,7 @@ export function buildLayoutGraph(
       id: s.id,
       kind: s.type,
       laneId: lane,
-      ...sizeStep(s, orientation, validLinks.length >= 2),
+      ...sizeStep(s, orientation, validLinks.length >= 2, annotations),
       pinFirst: s.type === "start",
       stepId: s.id,
     });

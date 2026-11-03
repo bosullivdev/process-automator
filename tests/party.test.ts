@@ -134,3 +134,14 @@ describe("rename / delete / usage", () => {
     expect(out.processes[0].laneOrder).toEqual([]);
   });
 });
+
+describe("partyInitials", () => {
+  it("takes two letters from one word or the first letters of two words", async () => {
+    const { partyInitials } = await import("../src/model/party");
+    expect(partyInitials("Finance")).toBe("FI");
+    expect(partyInitials("Customer Service")).toBe("CS");
+    expect(partyInitials("R&I")).toBe("RI");
+    expect(partyInitials("Staff/Students")).toBe("SS");
+    expect(partyInitials("  ")).toBe("?");
+  });
+});

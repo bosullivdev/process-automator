@@ -68,10 +68,10 @@ export default function App() {
   const graph = useMemo(
     () =>
       process
-        ? buildLayoutGraph(process, parties, view.shapeMode, view.orientation)
+        ? buildLayoutGraph(process, parties, view.shapeMode, view.orientation, view.annotations)
         : { laneOrder: [], nodes: [], edges: [] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [process, parties, view.shapeMode, view.orientation, fontsReady],
+    [process, parties, view.shapeMode, view.orientation, view.annotations, fontsReady],
   );
   const { layout, updating } = useLayout(graph, view.orientation);
 
@@ -108,6 +108,7 @@ export default function App() {
       layout={layout}
       updating={updating}
       mode={view.shapeMode}
+      annotations={view.annotations}
       selectedStepId={selectedStepId}
       flags={flagMap}
       onSelect={selectStep}
@@ -147,6 +148,14 @@ export default function App() {
           onClick={() => setView({ shapeMode: view.shapeMode === "simple" ? "bpmn" : "simple" })}
         >
           {view.shapeMode === "simple" ? "Simple" : "BPMN"}
+        </button>
+        <button
+          className="btn"
+          aria-label="Toggle annotations"
+          title="Show or hide technology and contributors on the map"
+          onClick={() => setView({ annotations: view.annotations === "full" ? "minimal" : "full" })}
+        >
+          {view.annotations === "full" ? "Details" : "Minimal"}
         </button>
         <span
           className="flex items-center gap-1 text-xs text-[var(--text-muted)]"

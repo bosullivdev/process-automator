@@ -41,6 +41,7 @@ export function createEmptyWorkspace(name = "Untitled workspace"): Workspace {
       theme: "system",
       splitRatio: 0.5,
       activeProcessId: process.id,
+      annotations: "full",
     },
   };
 }

@@ -45,3 +45,13 @@ describe("migrate", () => {
     expect(() => migrate(ws)).toThrow(/colourOverride/);
   });
 });
+
+describe("annotations default", () => {
+  it("loads a file saved before the annotations setting existed", () => {
+    const ws = workspace([], []);
+    const { annotations: _dropped, ...legacyView } = ws.view;
+    void _dropped;
+    const out = migrate({ ...ws, view: legacyView });
+    expect(out.view.annotations).toBe("full");
+  });
+});

@@ -60,3 +60,16 @@ describe("content-sized nodes", () => {
     expect(v.cy).toBe(v.shapeHeight / 2);
   });
 });
+
+describe("annotations", () => {
+  it("minimal hides technology and contributor rows and shrinks the task", () => {
+    const p = process([
+      step({ id: "a", displayNo: 1, name: "Pack", technology: "WMS", contributorIds: ["x"] }),
+    ]);
+    const full = buildLayoutGraph(p, [], "simple", "horizontal", "full").nodes[0];
+    const minimal = buildLayoutGraph(p, [], "simple", "horizontal", "minimal").nodes[0];
+    expect(full.text.tech).toBe("WMS");
+    expect(minimal.text.tech).toBeUndefined();
+    expect(minimal.height).toBeLessThan(full.height);
+  });
+});

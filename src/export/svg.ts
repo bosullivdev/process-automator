@@ -2,6 +2,7 @@ import type { Party, Process } from "../model/types";
 import type { LayoutResult } from "../graph/layout-types";
 import { UNASSIGNED_LANE } from "../graph/layout-types";
 import { resolveColour, UNASSIGNED_COLOUR } from "../design/palette";
+import { partyInitials } from "../model/party";
 import { fontFaceCss, loadAllFonts } from "./fonts";
 
 export interface ExportContext {
@@ -15,7 +16,7 @@ export interface ExportContext {
 
 const PAD = 32;
 const TITLE_H = 64;
-const LEGEND_ROW = 22;
+const LEGEND_ROW = 24;
 
 /** Resolve CSS custom properties used in the map into literal values. */
 function cssVars(theme: "light" | "dark"): Record<string, string> {
@@ -107,19 +108,25 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
   }
   const content = clone?.outerHTML ?? "";
 
-  const lanes = layout.lanes.map((l) => {
-    const p = parties.find((x) => x.id === l.id);
-    const c =
-      l.id === UNASSIGNED_LANE
-        ? UNASSIGNED_COLOUR[theme]
-        : p
-          ? resolveColour(p.colourIndex, theme, p.colourOverride)
-          : UNASSIGNED_COLOUR[theme];
-    return {
-      name: l.id === UNASSIGNED_LANE ? "Unassigned" : (p?.name ?? "Unknown"),
-      colour: c.fill,
-    };
+  // Legend: every party referenced by the process as an owner or contributor,
+  // in lane order first, then contributors-only parties, then Unassigned.
+  const referenced: string[] = [];
+  for (const l of layout.lanes) if (l.id !== UNASSIGNED_LANE) referenced.push(l.id);
+  for (const st of process.steps) {
+    for (const c of st.contributorIds) {
+      if (!referenced.includes(c) && parties.some((p) => p.id === c)) referenced.push(c);
+    }
+  }
+  const lanes = referenced.map((id) => {
+    const p = parties.find((x) => x.id === id);
+    const c = p ? resolveColour(p.colourIndex, theme, p.colourOverride) : UNASSIGNED_COLOUR[theme];
+    const name = p?.name ?? "Unknown";
+    return { name, colour: c.fill, text: c.text, initials: partyInitials(name) };
   });
+  if (layout.lanes.some((l) => l.id === UNASSIGNED_LANE)) {
+    const c = UNASSIGNED_COLOUR[theme];
+    lanes.push({ name: "Unassigned", colour: c.fill, text: c.text, initials: "" });
+  }
 
   const width = Math.max(layout.width, 420) + PAD * 2;
   const legendH = lanes.length ? LEGEND_ROW * lanes.length + 16 : 0;
@@ -136,14 +143,17 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
     .map(
       (l, i) =>
         `<g transform="translate(${PAD}, ${PAD + TITLE_H + layout.height + 24 + i * LEGEND_ROW})">` +
-        `<rect x="0" y="0" width="14" height="14" rx="3" fill="${l.colour}"/>` +
-        `<text x="22" y="7" dominant-baseline="central" font-size="12" fill="${vars["--text"]}">${esc(l.name)}</text></g>`,
+        `<circle cx="9" cy="9" r="9" fill="${l.colour}"/>` +
+        (l.initials
+          ? `<text x="9" y="9" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="700" fill="${l.text}">${esc(l.initials)}</text>`
+          : "") +
+        `<text x="26" y="9" dominant-baseline="central" font-size="12" fill="${vars["--text"]}">${esc(l.name)}</text></g>`,
     )
     .join("");
 
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, system-ui, sans-serif">` +
-    `<style>${fontFaceCss(fonts)}\ntext{font-family:Inter,system-ui,sans-serif}</style>` +
+    `<style>${fontFaceCss(fonts)}\ntext{font-family:Inter,system-ui,sans-serif}\ntext[data-font="mono"]{font-family:"JetBrains Mono",ui-monospace,monospace}</style>` +
     `<rect width="100%" height="100%" fill="${vars["--bg"]}"/>` +
     `<g transform="translate(${PAD}, ${PAD})">` +
     `<text x="0" y="14" font-size="20" font-weight="600" fill="${vars["--text"]}">${esc(process.name)}</text>` +
@@ -153,7 +163,7 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
     `</g>` +
     `<g transform="translate(${PAD}, ${PAD + TITLE_H})">${defs}${content}</g>` +
     (lanes.length
-      ? `<text x="${PAD}" y="${PAD + TITLE_H + layout.height + 10}" font-size="11" font-weight="600" fill="${vars["--text-muted"]}">LANES</text>`
+      ? `<text x="${PAD}" y="${PAD + TITLE_H + layout.height + 10}" font-size="11" font-weight="600" fill="${vars["--text-muted"]}">PARTIES</text>`
       : "") +
     legend +
     `</svg>`;

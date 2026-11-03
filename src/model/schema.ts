@@ -48,6 +48,8 @@ const viewSchema = z.object({
   theme: z.enum(["system", "light", "dark"]),
   splitRatio: z.number().min(0.2).max(0.8),
   activeProcessId: z.string().nullable(),
+  // Added after the first release; older files load with the default.
+  annotations: z.enum(["full", "minimal"]).default("full"),
 });
 
 export const workspaceV1Schema = z.object({

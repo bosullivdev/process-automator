@@ -2,6 +2,11 @@ import type { Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import type { LayoutNode, PositionedNode } from "../../graph/layout-types";
 import type { ResolvedColour } from "../../design/palette";
+import { BADGE_ROW, BADGE_SIZE, TECH_ROW } from "../../graph/build-graph";
+import { partyInitials } from "../../model/party";
+import { estimateTextWidth } from "./text";
+
+export const MONO_FONT = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace';
 
 export interface NodeColours {
   owner: ResolvedColour;
@@ -146,11 +151,16 @@ export function MapNode({
 
   const isTask = kind === "task";
   const nameLines = text.nameLines;
-  const showTech = isTask && text.tech;
-  const hasDots = isTask && (colours.contributors.length > 0 || !!step?.isSubProcess);
-  // Inside text block: name lines, optional tech line, optional dot row; centred vertically.
-  const blockH = nameLines.length * LINE_H + (showTech ? LINE_H : 0);
-  const blockTop = cy - blockH / 2 - (hasDots ? 4 : 0);
+  const showTech = isTask && !!text.tech;
+  const hasBadges = isTask && (colours.contributors.length > 0 || !!step?.isSubProcess);
+  // Inside the task: name lines, then the technology pill, then the badge row; the
+  // whole block is centred vertically, matching the height reserved by sizeStep.
+  const blockH =
+    nameLines.length * LINE_H + (showTech ? TECH_ROW : 0) + (hasBadges ? BADGE_ROW : 0);
+  const blockTop = cy - blockH / 2;
+  const techW = showTech ? estimateTextWidth(text.tech!, 10) + 12 : 0;
+  const techY = blockTop + nameLines.length * LINE_H + TECH_ROW / 2;
+  const badgeY = blockTop + nameLines.length * LINE_H + (showTech ? TECH_ROW : 0) + BADGE_ROW / 2;
   const outside = text.outside;
   const side = node.labelSide;
   const labelRight = outside && side === "right";
@@ -205,44 +215,73 @@ export function MapNode({
         </text>
       )}
       {showTech && (
-        <text
-          x={cx}
-          y={blockTop + nameLines.length * LINE_H + LINE_H / 2}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontSize={10}
-          fill="var(--text-muted)"
-          style={{ pointerEvents: "none" }}
-        >
-          {text.tech}
-        </text>
+        <g style={{ pointerEvents: "none" }}>
+          <rect
+            x={cx - techW / 2}
+            y={techY - 8}
+            width={techW}
+            height={16}
+            rx={8}
+            fill="var(--surface-2)"
+            stroke="var(--border)"
+            strokeWidth={1}
+          />
+          <text
+            x={cx}
+            y={techY}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={10}
+            fontFamily={MONO_FONT}
+            data-font="mono"
+            fill="var(--text-muted)"
+          >
+            {text.tech}
+          </text>
+        </g>
       )}
+      {isTask &&
+        colours.contributors.map((c, i) => {
+          const bx = x + 10 + i * (BADGE_SIZE + 4) + BADGE_SIZE / 2;
+          return (
+            <g key={c.id}>
+              <title>{`Contributor: ${c.name}`}</title>
+              <circle
+                cx={bx}
+                cy={badgeY}
+                r={BADGE_SIZE / 2}
+                fill={c.colour.fill}
+                stroke="var(--surface)"
+                strokeWidth={1}
+              />
+              <text
+                x={bx}
+                y={badgeY}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={8}
+                fontWeight={700}
+                fill={c.colour.text}
+                style={{ pointerEvents: "none" }}
+              >
+                {partyInitials(c.name)}
+              </text>
+            </g>
+          );
+        })}
       {isTask && step?.isSubProcess && (
         <g
-          transform={`translate(${cx - 6}, ${y + height - 16})`}
+          transform={`translate(${x + width - 10 - 12}, ${badgeY - 6})`}
           stroke={colours.owner.fill}
           fill="none"
           strokeWidth={1.2}
         >
+          <title>Sub-process</title>
           <rect x={0} y={0} width={12} height={12} rx={2} />
           <line x1={3} y1={6} x2={9} y2={6} />
           <line x1={6} y1={3} x2={6} y2={9} />
         </g>
       )}
-      {isTask &&
-        colours.contributors.map((c, i) => (
-          <circle
-            key={c.id}
-            cx={x + 12 + i * 12}
-            cy={y + height - 10}
-            r={4}
-            fill={c.colour.fill}
-            stroke="var(--surface)"
-            strokeWidth={1}
-          >
-            <title>{`Contributor: ${c.name}`}</title>
-          </circle>
-        ))}
       {sev && (
         <circle
           cx={x + width - (outside ? 2 : 4)}

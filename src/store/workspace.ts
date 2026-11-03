@@ -336,6 +336,7 @@ export const useStore = create<StoreState>()(
             processes: base.processes,
             view: {
               ...base.view,
+              annotations: base.view.annotations ?? "full",
               activeProcessId: activeOk
                 ? base.view.activeProcessId
                 : (base.processes[0]?.id ?? null),

@@ -46,6 +46,7 @@ export function workspace(parties: Party[], processes: Process[]): Workspace {
       theme: "system",
       splitRatio: 0.5,
       activeProcessId: processes[0]?.id ?? null,
+      annotations: "full",
     },
   };
 }

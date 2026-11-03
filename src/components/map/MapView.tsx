@@ -21,6 +21,7 @@ interface Props {
   layout: LayoutResult | null;
   updating: boolean;
   mode: "simple" | "bpmn";
+  annotations: "full" | "minimal";
   selectedStepId: string | null;
   flags: Map<string, Flag[]>;
   onSelect: (stepId: string | null) => void;
@@ -34,6 +35,7 @@ export function MapView({
   layout,
   updating,
   mode,
+  annotations,
   selectedStepId,
   flags,
   onSelect,
@@ -348,7 +350,7 @@ export function MapView({
             const ownerColour = laneColour(ln.laneId);
             const colours: NodeColours = {
               owner: ownerColour,
-              contributors: (step?.contributorIds ?? [])
+              contributors: (annotations === "full" ? (step?.contributorIds ?? []) : [])
                 .map((id) => partyById.get(id))
                 .filter((p): p is Party => !!p)
                 .map((p) => ({

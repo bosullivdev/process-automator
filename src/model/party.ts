@@ -1,6 +1,17 @@
 import type { Party, Process, Workspace } from "./types";
 import { newId } from "./ids";
 
+/** Up to two characters that stand for a party on the map: "Finance" -> "FI", "R&I" -> "RI", "Customer Service" -> "CS". */
+export function partyInitials(name: string): string {
+  const words = name
+    .split(/[\s/_-]+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
+    .filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
 export function normaliseName(name: string): string {
   return name.trim().toLowerCase();
 }

@@ -54,4 +54,6 @@ export interface ViewSettings {
   theme: "system" | "light" | "dark";
   splitRatio: number; // 0.2 to 0.8
   activeProcessId: string | null;
+  /** "full" shows technology and contributors on the map; "minimal" hides them. */
+  annotations: "full" | "minimal";
 }
