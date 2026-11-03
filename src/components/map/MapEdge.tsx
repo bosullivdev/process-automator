@@ -58,7 +58,7 @@ export function MapEdge({ edge, route, selected, mode }: Props) {
       />
       {slash}
       {label && la && (
-        <g transform={`translate(${la.x}, ${la.y - 9})`}>
+        <g transform={`translate(${la.x}, ${la.y})`}>
           <rect
             x={-lw / 2}
             y={-9}

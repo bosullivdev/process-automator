@@ -40,6 +40,7 @@ interface FLNode {
   row: number;
   rowBottom: number; // l of the bottom of this node's row slot
   rowGutter: number; // node-free l just below the row
+  rowGutterUp: number; // node-free l just above the row
 }
 
 export const ELK_OPTIONS: Record<string, string> = {
@@ -110,6 +111,7 @@ export async function layoutGraph(
       row: 0,
       rowBottom: 0,
       rowGutter: 0,
+      rowGutterUp: 0,
     });
   }
   const layerCount = xs.length;
@@ -139,6 +141,7 @@ export async function layoutGraph(
       n.l1 = n.l0 + n.lExtent;
       n.rowBottom = slotTop + rowH;
       n.rowGutter = n.row === rows - 1 ? l1 - LANE_PAD / 2 : n.rowBottom + GAP_L / 2;
+      n.rowGutterUp = n.row === 0 ? l0 + LANE_PAD / 2 : slotTop - GAP_L / 2;
       n.f0 = colStart(n.layer) + (NODE_F - n.fExtent) / 2;
       n.f1 = n.f0 + n.fExtent;
     }
@@ -156,33 +159,88 @@ export async function layoutGraph(
     if (g >= layerCount - 1) return [start + 6, start + END_MARGIN_F - 6];
     return [start, start + GAP_F];
   };
-  type Seg = { edgeId: string; gap: number; key: number; which: "a" | "b" };
-  const segs: Seg[] = [];
-  const edgeInfo = graph.edges
-    .map((e) => {
-      const s = nodes.get(e.from);
-      const t = nodes.get(e.to);
-      if (!s || !t) return null;
-      const forward = t.layer > s.layer;
-      const direct = forward && t.layer === s.layer + 1;
-      const gapA = forward ? s.layer : s.layer; // channel after source
-      const gapB = forward ? t.layer - 1 : t.layer - 1; // channel before target
-      return { e, s, t, forward, direct, gapA, gapB };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const COLLIDE_MARGIN = 8;
+  /** True when a horizontal run at lane-coordinate l between f0 and f1 touches no node (other than skip). */
+  const clearRun = (f0: number, f1: number, l: number, skip: Set<string>): boolean => {
+    const lo = Math.min(f0, f1);
+    const hi = Math.max(f0, f1);
+    for (const n of nodes.values()) {
+      if (skip.has(n.id)) continue;
+      if (n.f1 + COLLIDE_MARGIN <= lo || n.f0 - COLLIDE_MARGIN >= hi) continue;
+      if (l < n.l0 - COLLIDE_MARGIN || l > n.l1 + COLLIDE_MARGIN) continue;
+      return false;
+    }
+    return true;
+  };
 
+  type PlanKind = "straight" | "targetLine" | "sourceLine" | "gutter" | "back";
+  interface EdgePlan {
+    e: (typeof graph.edges)[number];
+    s: FLNode;
+    t: FLNode;
+    sc: number;
+    tc: number;
+    kind: PlanKind;
+    rail: number; // gutter or back rail l-coordinate (gutter/back only)
+    needA: boolean; // channel after the source
+    needB: boolean; // channel before the target
+  }
+
+  /*
+   * Forward edges prefer, in order: a straight line; a run along the target's
+   * row (one bend pair in the channel after the source); a run along the
+   * source's row (bend pair in the channel before the target); a gutter route
+   * through the nearest node-free gutter. Each run is checked against every
+   * node, so edges never pass through a step. Back-edges go around the
+   * outside of the lane band.
+   */
   let backIndex = 0;
-  const backRail = new Map<string, number>();
-  for (const info of edgeInfo) {
-    const { e, s, t, direct, forward } = info;
+  const plans: EdgePlan[] = [];
+  for (const e of graph.edges) {
+    const s = nodes.get(e.from);
+    const t = nodes.get(e.to);
+    if (!s || !t) continue;
     const sc = (s.l0 + s.l1) / 2;
     const tc = (t.l0 + t.l1) / 2;
-    if (direct && Math.abs(sc - tc) < 0.5) continue; // straight line, no channel needed
-    segs.push({ edgeId: e.id, gap: info.gapA, key: sc * 1000 + tc, which: "a" });
-    if (!direct) segs.push({ edgeId: e.id, gap: info.gapB, key: tc * 1000 + sc, which: "b" });
-    if (!forward) backRail.set(e.id, backIndex++);
+    const skip = new Set([s.id, t.id]);
+    const plan: EdgePlan = { e, s, t, sc, tc, kind: "back", rail: 0, needA: true, needB: true };
+    if (t.layer > s.layer) {
+      const colEndS = colStart(s.layer) + NODE_F;
+      const colStartT = colStart(t.layer);
+      if (Math.abs(sc - tc) < 0.5 && clearRun(s.f1, t.f0, sc, skip)) {
+        plan.kind = "straight";
+        plan.needA = false;
+        plan.needB = false;
+      } else if (clearRun(colEndS, t.f0, tc, skip)) {
+        plan.kind = "targetLine";
+        plan.needB = false;
+      } else if (clearRun(s.f1, colStartT, sc, skip)) {
+        plan.kind = "sourceLine";
+        plan.needA = false;
+      } else {
+        plan.kind = "gutter";
+        const rails = [s.rowGutter, s.rowGutterUp, t.rowGutter, t.rowGutterUp];
+        plan.rail = rails.reduce((best, r) =>
+          Math.abs(sc - r) + Math.abs(r - tc) < Math.abs(sc - best) + Math.abs(best - tc)
+            ? r
+            : best,
+        );
+      }
+    } else {
+      plan.rail = bandEnd + BACK_STEP + backIndex * BACK_STEP;
+      backIndex++;
+    }
+    plans.push(plan);
   }
-  // Assign channel positions: spread segments in each gap by their key.
+
+  // Assign channel positions: spread the segments in each gap by their row order.
+  type Seg = { edgeId: string; gap: number; key: number; which: "a" | "b" };
+  const segs: Seg[] = [];
+  for (const p of plans) {
+    if (p.needA) segs.push({ edgeId: p.e.id, gap: p.s.layer, key: p.sc * 1000 + p.tc, which: "a" });
+    if (p.needB)
+      segs.push({ edgeId: p.e.id, gap: p.t.layer - 1, key: p.tc * 1000 + p.sc, which: "b" });
+  }
   const channelF = new Map<string, number>();
   const byGap = new Map<number, Seg[]>();
   for (const sg of segs) byGap.set(sg.gap, [...(byGap.get(sg.gap) ?? []), sg]);
@@ -194,53 +252,73 @@ export async function layoutGraph(
     });
   }
 
-  // Label spreading: edges leaving the same source, in order.
-  const labelIndex = new Map<string, number>();
-  const perSource = new Map<string, number>();
-  for (const info of edgeInfo) {
-    if (!info.e.label) continue;
-    const i = perSource.get(info.e.from) ?? 0;
-    labelIndex.set(info.e.id, i);
-    perSource.set(info.e.from, i + 1);
+  // Labels. Edges whose first segment is long carry the pill on it, stacked
+  // along the segment; edges that turn into a channel carry the pill on their
+  // own vertical segment, stacked by height so pills from one source never
+  // overlap. Pills beside a horizontal run sit just above the line.
+  const LABEL_H = 18;
+  const labelWidth = (text: string) => text.length * 10 * 0.58 + 14;
+  const labelled = plans.filter((p) => p.e.label);
+  const bySource = new Map<string, EdgePlan[]>();
+  for (const p of labelled) bySource.set(p.e.from, [...(bySource.get(p.e.from) ?? []), p]);
+  const labelFL = new Map<string, { f: number; l: number }>();
+  for (const group of bySource.values()) {
+    const horizontal = group.filter((p) => p.kind === "straight" || p.kind === "sourceLine");
+    const vertical = group.filter((p) => !horizontal.includes(p));
+    let along = 6;
+    for (const p of horizontal) {
+      const w = labelWidth(p.e.label!);
+      labelFL.set(p.e.id, { f: p.s.f1 + along + w / 2, l: p.sc - LABEL_H / 2 - 3 });
+      along += w + 8;
+    }
+    // Channel-side pills stack away from the source line. The step is the pill's
+    // extent along the lane axis: its height when lanes stack vertically, its
+    // width when lanes sit side by side (vertical flow).
+    const extentAlongL = (w: number) => (orientation === "horizontal" ? LABEL_H : w);
+    const stacks = { up: horizontal.length ? LABEL_H + 6 : 0, down: 0 };
+    for (const p of vertical) {
+      const w = labelWidth(p.e.label!);
+      const fa = channelF.get(`${p.e.id}:a`) ?? p.s.f1 + 12;
+      const goal = p.kind === "targetLine" ? p.tc : p.rail;
+      const dir = goal >= p.sc ? "down" : "up";
+      const ext = extentAlongL(w);
+      const want = 6 + stacks[dir] + ext / 2;
+      stacks[dir] += ext + 6;
+      const span = Math.abs(goal - p.sc);
+      const h = Math.min(want, Math.max(span / 2, 10));
+      labelFL.set(p.e.id, { f: fa, l: p.sc + (dir === "down" ? h : -h) });
+    }
   }
 
   const edges: RoutedEdge[] = [];
-  for (const info of edgeInfo) {
-    const { e, s, t, direct, forward } = info;
-    const sc = (s.l0 + s.l1) / 2;
-    const tc = (t.l0 + t.l1) / 2;
+  for (const p of plans) {
+    const { e, s, t, sc, tc } = p;
+    const fa = channelF.get(`${e.id}:a`) ?? s.f1;
+    const fb = channelF.get(`${e.id}:b`) ?? t.f0;
     const pts: Point[] = [];
-    const fa = channelF.get(`${e.id}:a`);
-    const fb = channelF.get(`${e.id}:b`);
-    if (forward && direct && fa === undefined) {
-      pts.push(toXY(s.f1, sc), toXY(t.f0, tc));
-    } else if (forward && direct) {
-      pts.push(toXY(s.f1, sc), toXY(fa!, sc), toXY(fa!, tc), toXY(t.f0, tc));
-    } else if (forward) {
-      const gutter = s.rowGutter;
-      pts.push(
-        toXY(s.f1, sc),
-        toXY(fa!, sc),
-        toXY(fa!, gutter),
-        toXY(fb!, gutter),
-        toXY(fb!, tc),
-        toXY(t.f0, tc),
-      );
-    } else {
-      const rail = bandEnd + BACK_STEP + (backRail.get(e.id) ?? 0) * BACK_STEP;
-      pts.push(
-        toXY(s.f1, sc),
-        toXY(fa!, sc),
-        toXY(fa!, rail),
-        toXY(fb!, rail),
-        toXY(fb!, tc),
-        toXY(t.f0, tc),
-      );
+    switch (p.kind) {
+      case "straight":
+        pts.push(toXY(s.f1, sc), toXY(t.f0, tc));
+        break;
+      case "targetLine":
+        pts.push(toXY(s.f1, sc), toXY(fa, sc), toXY(fa, tc), toXY(t.f0, tc));
+        break;
+      case "sourceLine":
+        pts.push(toXY(s.f1, sc), toXY(fb, sc), toXY(fb, tc), toXY(t.f0, tc));
+        break;
+      default:
+        pts.push(
+          toXY(s.f1, sc),
+          toXY(fa, sc),
+          toXY(fa, p.rail),
+          toXY(fb, p.rail),
+          toXY(fb, tc),
+          toXY(t.f0, tc),
+        );
     }
     const routed: RoutedEdge = { id: e.id, points: dedupe(pts) };
-    if (e.label) {
-      routed.labelAt = labelPoint(routed.points, labelIndex.get(e.id) ?? 0);
-    }
+    const lab = labelFL.get(e.id);
+    if (lab) routed.labelAt = toXY(lab.f, lab.l);
     edges.push(routed);
   }
 
@@ -295,36 +373,4 @@ function dedupe(pts: Point[]): Point[] {
     res.push(b);
   }
   return res;
-}
-
-/**
- * Labels sit on the edge's own channel segment (the second segment, which is
- * unique per edge) so several outcomes leaving one decision never overlap. A
- * straight edge has no channel, so its label sits a little way along it.
- */
-function labelPoint(pts: Point[], index: number): Point {
-  if (pts.length >= 3) {
-    const a = pts[1];
-    const b = pts[2];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    const d = Math.min(len / 2, 18 + index * 6);
-    const t = len === 0 ? 0 : d / len;
-    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-  }
-  return pointAlong(pts, 16 + index * 22);
-}
-
-function pointAlong(pts: Point[], dist: number): Point {
-  let remaining = dist;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const a = pts[i];
-    const b = pts[i + 1];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (remaining <= len) {
-      const t = len === 0 ? 0 : remaining / len;
-      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-    }
-    remaining -= len;
-  }
-  return pts[pts.length - 1] ?? { x: 0, y: 0 };
 }

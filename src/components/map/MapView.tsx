@@ -59,14 +59,17 @@ export function MapView({
   const laneName = (laneId: string) =>
     laneId === UNASSIGNED_LANE ? "Unassigned" : (partyById.get(laneId)?.name ?? "Unknown");
 
-  // Fit once per process / orientation.
+  // Keep the whole map in view after each layout until the user pans or zooms;
+  // switching process or orientation starts afresh.
+  const userAdjusted = useRef(false);
   useEffect(() => {
     if (!layout || layout.width === 0) return;
     const key = `${process.id}:${layout.orientation}`;
     if (fittedFor.current !== key) {
       fittedFor.current = key;
-      fit(layout.width, layout.height);
+      userAdjusted.current = false;
     }
+    if (!userAdjusted.current) fit(layout.width, layout.height);
   }, [layout, process.id, fit]);
 
   // When the selection changes from outside the map, pan to the node.
@@ -155,7 +158,10 @@ export function MapView({
     >
       <svg
         className="h-full w-full"
-        onWheel={pz.onWheel}
+        onWheel={(e) => {
+          userAdjusted.current = true;
+          pz.onWheel(e);
+        }}
         onPointerDown={pz.onPointerDown}
         onPointerMove={(e) => {
           pz.onPointerMove(e);
@@ -163,6 +169,7 @@ export function MapView({
         }}
         onPointerUp={(e) => {
           const moved = pz.onPointerUp();
+          if (moved) userAdjusted.current = true;
           if (drag) {
             onHeaderPointerUp();
             return;
@@ -358,6 +365,7 @@ export function MapView({
                 step={ln.kind === "fork" || ln.kind === "join" ? undefined : step}
                 colours={colours}
                 mode={mode}
+                orientation={layout.orientation}
                 selected={!!step && step.id === selectedStepId}
                 flags={step ? flags.get(step.id) : undefined}
                 onSelect={(id) => {
@@ -376,16 +384,33 @@ export function MapView({
       )}
       <div className="absolute right-3 bottom-3 flex items-center gap-1">
         {updating && <span className="mr-1 text-[11px] text-[var(--text-muted)]">updating…</span>}
-        <button className="btn btn-icon" aria-label="Zoom out" onClick={pz.zoomOut}>
+        <button
+          className="btn btn-icon"
+          aria-label="Zoom out"
+          onClick={() => {
+            userAdjusted.current = true;
+            pz.zoomOut();
+          }}
+        >
           −
         </button>
-        <button className="btn btn-icon" aria-label="Zoom in" onClick={pz.zoomIn}>
+        <button
+          className="btn btn-icon"
+          aria-label="Zoom in"
+          onClick={() => {
+            userAdjusted.current = true;
+            pz.zoomIn();
+          }}
+        >
           +
         </button>
         <button
           className="btn"
           aria-label="Fit to view"
-          onClick={() => layout && fit(layout.width, layout.height)}
+          onClick={() => {
+            userAdjusted.current = false;
+            if (layout) fit(layout.width, layout.height);
+          }}
         >
           Fit
         </button>

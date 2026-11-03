@@ -1,6 +1,6 @@
 import type { Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
-import type { LayoutNodeKind, PositionedNode } from "../../graph/layout-types";
+import type { LayoutNodeKind, Orientation, PositionedNode } from "../../graph/layout-types";
 import type { ResolvedColour } from "../../design/palette";
 import { wrapText } from "./text";
 
@@ -15,12 +15,23 @@ interface Props {
   step: Step | undefined;
   colours: NodeColours;
   mode: "simple" | "bpmn";
+  orientation: Orientation;
   selected: boolean;
   flags: Flag[] | undefined;
   onSelect: (stepId: string) => void;
 }
 
-export function MapNode({ node, kind, step, colours, mode, selected, flags, onSelect }: Props) {
+export function MapNode({
+  node,
+  kind,
+  step,
+  colours,
+  mode,
+  orientation,
+  selected,
+  flags,
+  onSelect,
+}: Props) {
   const { x, y, width, height } = node;
   const cx = x + width / 2;
   const cy = y + height / 2;
@@ -134,6 +145,9 @@ export function MapNode({ node, kind, step, colours, mode, selected, flags, onSe
   const showTech = isTask && step?.technology;
   const nameY = isTask ? (showTech ? cy - 8 : cy) : cy;
   const labelOutside = kind === "start" || kind === "end" || kind === "decision";
+  // Outside labels go below the shape when flow runs left-to-right, and to the
+  // right of it when flow runs top-to-bottom, so they never sit on the exit arrow.
+  const labelRight = labelOutside && orientation === "vertical";
 
   return (
     <g
@@ -159,9 +173,9 @@ export function MapNode({ node, kind, step, colours, mode, selected, flags, onSe
       {shape}
       {step && (
         <text
-          x={cx}
-          y={labelOutside ? y + height + 12 : nameY}
-          textAnchor="middle"
+          x={labelRight ? x + width + 6 : cx}
+          y={labelRight ? cy : labelOutside ? y + height + 12 : nameY}
+          textAnchor={labelRight ? "start" : "middle"}
           dominantBaseline="central"
           fontSize={labelOutside ? 11 : 12}
           fontWeight={500}
@@ -171,8 +185,8 @@ export function MapNode({ node, kind, step, colours, mode, selected, flags, onSe
           {nameLines.map((line, i) => (
             <tspan
               key={i}
-              x={cx}
-              dy={i === 0 ? (nameLines.length > 1 && !labelOutside ? -7 : 0) : 14}
+              x={labelRight ? x + width + 6 : cx}
+              dy={i === 0 ? (nameLines.length > 1 && (!labelOutside || labelRight) ? -7 : 0) : 14}
             >
               {line}
             </tspan>
