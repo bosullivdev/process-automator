@@ -117,6 +117,14 @@ export default function App() {
         >
           {view.orientation === "horizontal" ? "Horizontal" : "Vertical"}
         </button>
+        <button
+          className="btn"
+          aria-label="Toggle shape mode"
+          title="Shape mode"
+          onClick={() => setView({ shapeMode: view.shapeMode === "simple" ? "bpmn" : "simple" })}
+        >
+          {view.shapeMode === "simple" ? "Simple" : "BPMN"}
+        </button>
         <span className="text-xs text-[var(--text-muted)]">{saveStatus}</span>
         <button className="btn" onClick={cycleTheme} aria-label="Theme">
           Theme: {view.theme}
