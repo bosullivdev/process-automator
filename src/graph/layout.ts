@@ -139,7 +139,12 @@ export async function layoutGraph(
   for (const laneId of graph.laneOrder) {
     const laneNodes = [...nodes.values()].filter((n) => n.laneId === laneId);
     if (laneNodes.length === 0) continue;
-    const rowH = Math.max(...laneNodes.map((n) => n.lExtent));
+    // Rows align on shape centres, not box centres, so an arrow between two
+    // nodes in the same row is straight even when one carries a name outside
+    // its shape. The row is as tall as the largest extent above and below that line.
+    const above = Math.max(...laneNodes.map((n) => n.aL));
+    const below = Math.max(...laneNodes.map((n) => n.lExtent - n.aL));
+    const rowH = above + below;
     let rows = 1;
     for (let k = 0; k < layerCount; k++) {
       const inCell = laneNodes
@@ -153,7 +158,7 @@ export async function layoutGraph(
     const l1 = l0 + height;
     for (const n of laneNodes) {
       const slotTop = l0 + LANE_PAD + n.row * (rowH + GAP_L);
-      n.l0 = slotTop + (rowH - n.lExtent) / 2;
+      n.l0 = slotTop + above - n.aL;
       n.l1 = n.l0 + n.lExtent;
       n.rowBottom = slotTop + rowH;
       n.rowGutter = n.row === rows - 1 ? l1 - LANE_PAD / 2 : n.rowBottom + GAP_L / 2;

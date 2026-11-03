@@ -177,3 +177,56 @@ describe("decision side exits", () => {
     expect(yes.labelAt!.y).toBeGreaterThan(shapeBottom);
   });
 });
+
+describe("same-row alignment", () => {
+  it("draws straight arrows between mixed shapes in one row", async () => {
+    const ops = party("Ops", 0);
+    const proc = process(
+      [
+        step({
+          id: "s",
+          displayNo: 1,
+          type: "start",
+          ownerId: ops.id,
+          name: "Request received from a department",
+          next: [{ targetId: "t" }],
+        }),
+        step({
+          id: "t",
+          displayNo: 2,
+          ownerId: ops.id,
+          name: "Submit the request within the finance system",
+          next: [{ targetId: "d" }],
+        }),
+        step({
+          id: "d",
+          displayNo: 3,
+          type: "decision",
+          ownerId: ops.id,
+          name: "Is the requisition charged to a research grant?",
+          next: [
+            { targetId: "e", label: "No" },
+            { targetId: "f", label: "Yes" },
+          ],
+        }),
+        step({ id: "e", displayNo: 4, type: "end", ownerId: ops.id, name: "Closed" }),
+        step({
+          id: "f",
+          displayNo: 5,
+          type: "end",
+          ownerId: ops.id,
+          name: "Referred to the research office",
+        }),
+      ],
+      { laneOrder: [ops.id] },
+    );
+    for (const orientation of ["horizontal", "vertical"] as const) {
+      const graph = buildLayoutGraph(proc, [ops], "simple", orientation);
+      const r = await layoutGraph(graph, orientation, elk);
+      for (const id of ["s->t", "t->d", "d->e"]) {
+        const e = r.edges.find((x) => x.id === id)!;
+        expect(e.points, `${orientation} ${id}`).toHaveLength(2);
+      }
+    }
+  });
+});
