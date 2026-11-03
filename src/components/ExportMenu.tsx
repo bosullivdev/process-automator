@@ -4,6 +4,7 @@ import { getWorkspace, useStore } from "../store/workspace";
 import { hasUnsavedChanges } from "../store/autosave";
 import { isWorkspaceEmpty } from "../model/workspace";
 import { exportWorkspaceJson, readWorkspaceFile } from "../export/json";
+import { exportProcessCsv } from "../export/csv";
 import { buildExportSvg, svgToBlob } from "../export/svg";
 import { svgToPng } from "../export/png";
 import { datestamp, downloadBlob, safeFilename } from "../export/download";
@@ -24,13 +25,17 @@ export function ExportMenu({ process, layout }: Props) {
   const theme = useResolvedTheme();
   const parties = useStore((s) => s.parties);
 
-  const run = async (kind: "json" | "svg" | "png" | "pdf") => {
+  const run = async (kind: "json" | "csv" | "svg" | "png" | "pdf") => {
     setOpen(false);
     setBusy(kind);
     try {
       const ws = getWorkspace();
       if (kind === "json") {
         exportWorkspaceJson(ws);
+        return;
+      }
+      if (kind === "csv") {
+        exportProcessCsv(process, parties);
         return;
       }
       const svgEl = document.querySelector<SVGSVGElement>('[data-testid="map"] svg');
@@ -69,6 +74,9 @@ export function ExportMenu({ process, layout }: Props) {
         <div role="menu" className="flex flex-col">
           <button role="menuitem" className="menu-item" onClick={() => run("json")}>
             Workspace JSON
+          </button>
+          <button role="menuitem" className="menu-item" onClick={() => run("csv")}>
+            Table as CSV
           </button>
           <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />
           <button role="menuitem" className="menu-item" onClick={() => run("svg")}>

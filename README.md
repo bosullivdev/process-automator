@@ -14,7 +14,9 @@ a static site.
   Technology, Contributors, Notes. Row order has no meaning; flow is defined by
   the Next column. The Type dropdown lists each type with its variants
   (message or timer start, sub-process task, terminate end) so a row needs a
-  single choice.
+  single choice. "Sort by flow" reorders the rows to follow the process from
+  its start, one branch at a time, which is handy before reading or exporting
+  the table; it changes nothing on the map and can be undone.
 - **Keyboard**: Enter adds a row below; Tab moves across cells; Escape closes
   pickers; Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z undo and redo; Cmd/Ctrl+D
   duplicates the row (everything except Next); Delete on the No cell deletes
@@ -42,7 +44,9 @@ a static site.
   storage can be cleared, so use Export → Workspace JSON for a real copy and
   Import to load it again.
 - **Export**: the active process map as SVG, PNG (2x) or PDF, with a title
-  block and a legend of every party on the map, owners and contributors alike. Fonts are embedded so exports render the same
+  block and a legend of every party on the map, owners and contributors alike;
+  or the active process table as CSV, with party and step names rather than
+  ids, for sharing and review (CSV is export-only; import takes JSON). Fonts are embedded so exports render the same
   everywhere.
 
 ## Development

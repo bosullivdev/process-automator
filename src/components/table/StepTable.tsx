@@ -8,6 +8,7 @@ import { ContributorsCombobox } from "./ContributorsCombobox";
 import { NextPicker } from "./NextPicker";
 import { Tooltip } from "../ui/Tooltip";
 import { toast } from "../ui/toast";
+import { readingOrder } from "../../graph/reading-order";
 
 interface Props {
   process: Process;
@@ -26,6 +27,7 @@ export function StepTable({ process, flags }: Props) {
   const deleteStep = useStore((s) => s.deleteStep);
   const duplicateStep = useStore((s) => s.duplicateStep);
   const restoreStep = useStore((s) => s.restoreStep);
+  const reorderSteps = useStore((s) => s.reorderSteps);
   const addParty = useStore((s) => s.addParty);
 
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
@@ -303,6 +305,19 @@ export function StepTable({ process, flags }: Props) {
         >
           + Add step
         </button>
+        {process.steps.length > 1 && (
+          <button
+            type="button"
+            className="btn btn-ghost ml-2"
+            title="Reorder rows to follow the flow from the start, one branch at a time"
+            onClick={() => {
+              reorderSteps(process.id, readingOrder(process));
+              toast("Rows reordered to follow the flow.");
+            }}
+          >
+            Sort by flow
+          </button>
+        )}
         {process.steps.length === 0 && (
           <p className="mt-2 px-1 text-xs text-[var(--text-muted)]">
             Add a step, then press Enter to add the next one. Use the Next column to link steps.

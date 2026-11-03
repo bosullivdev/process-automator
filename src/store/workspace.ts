@@ -92,6 +92,8 @@ export interface StoreState extends DocState {
   deleteStep: (processId: string, stepId: string) => void;
   duplicateStep: (processId: string, stepId: string) => string | null;
   restoreStep: (processId: string, step: Step, index: number) => void;
+  /** Reorder table rows. Ids not listed keep their relative order after the listed ones. */
+  reorderSteps: (processId: string, orderedIds: string[]) => void;
 
   addParty: (name: string) => string;
   renameParty: (partyId: string, name: string) => void;
@@ -282,6 +284,15 @@ export const useStore = create<StoreState>()(
             ensureLane(proc, step.ownerId);
           }),
 
+        reorderSteps: (processId, orderedIds) =>
+          edit((d) => {
+            const proc = findProcess(d, processId);
+            if (!proc) return;
+            const byId = new Map(proc.steps.map((x) => [x.id, x]));
+            const listed = orderedIds.map((id) => byId.get(id)).filter((x): x is Step => !!x);
+            const rest = proc.steps.filter((x) => !orderedIds.includes(x.id));
+            proc.steps = [...listed, ...rest];
+          }),
         addParty: (name) => {
           const party = createParty(name, get().parties);
           edit((d) => {
