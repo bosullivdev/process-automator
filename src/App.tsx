@@ -3,6 +3,8 @@ import { SplitPane } from "./components/SplitPane";
 import { StepTable } from "./components/table/StepTable";
 import { ValidationPanel } from "./components/ValidationPanel";
 import { MapView } from "./components/map/MapView";
+import { PartySheet } from "./components/PartySheet";
+import { ProcessSwitcher } from "./components/ProcessSwitcher";
 import { Toaster } from "./components/ui/Toaster";
 import { buildLayoutGraph } from "./graph/build-graph";
 import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
@@ -24,6 +26,7 @@ export default function App() {
   const removeLink = useStore((s) => s.removeLink);
   const setLaneOrder = useStore((s) => s.setLaneOrder);
   const [tab, setTab] = useState<"table" | "map">("table");
+  const [partiesOpen, setPartiesOpen] = useState(false);
   const narrow = useMediaQuery(NARROW_QUERY);
   useApplyTheme();
 
@@ -102,11 +105,16 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <header
-        className="flex h-12 shrink-0 items-center gap-2 border-b px-3"
+        className="relative flex h-12 shrink-0 items-center gap-2 border-b px-3"
         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
       >
         <span className="font-semibold">Process Mapper</span>
+        <ProcessSwitcher />
         <div className="flex-1" />
+        <button className="btn" aria-label="Parties" onClick={() => setPartiesOpen(true)}>
+          Parties
+          <span className="text-xs text-[var(--text-muted)]">{parties.length}</span>
+        </button>
         <button
           className="btn"
           aria-label="Toggle orientation"
@@ -156,6 +164,7 @@ export default function App() {
           <SplitPane ratio={view.splitRatio} onRatioChange={onRatio} left={table} right={map} />
         </div>
       )}
+      <PartySheet open={partiesOpen} onClose={() => setPartiesOpen(false)} />
       <Toaster />
     </div>
   );
