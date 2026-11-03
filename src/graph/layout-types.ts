@@ -14,6 +14,8 @@ export interface NodeText {
   /** Outside label box size (0 when the name is inside). */
   labelWidth: number;
   labelHeight: number;
+  /** Label space is reserved on both sides so the name can move away from a side exit. */
+  symmetric: boolean;
 }
 
 export interface LayoutNode {
@@ -61,6 +63,9 @@ export interface Point {
   y: number;
 }
 
+/** Which side of the shape an outside name is drawn on. */
+export type LabelSide = "below" | "above" | "right" | "left";
+
 export interface PositionedNode {
   id: string;
   x: number;
@@ -68,6 +73,7 @@ export interface PositionedNode {
   width: number;
   height: number;
   layer: number;
+  labelSide: LabelSide;
 }
 
 export interface RoutedEdge {

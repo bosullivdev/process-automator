@@ -130,3 +130,50 @@ describe("layout", () => {
     expect(r.width).toBe(0);
   });
 });
+
+describe("decision side exits", () => {
+  it("sends the nearest turning outcome out of the shape's side and moves the name away", async () => {
+    const sales = party("Sales", 0);
+    const ops = party("Ops", 1);
+    const proc = process(
+      [
+        step({
+          id: "a",
+          displayNo: 1,
+          type: "start",
+          ownerId: sales.id,
+          next: [{ targetId: "d" }],
+        }),
+        step({
+          id: "d",
+          displayNo: 2,
+          type: "decision",
+          ownerId: sales.id,
+          next: [
+            { targetId: "x", label: "No" },
+            { targetId: "y", label: "Yes" },
+          ],
+        }),
+        step({ id: "x", displayNo: 3, type: "end", ownerId: sales.id }),
+        step({ id: "y", displayNo: 4, type: "end", ownerId: ops.id }),
+      ],
+      { laneOrder: [sales.id, ops.id] },
+    );
+    const graph = buildLayoutGraph(proc, [sales, ops], "simple", "horizontal");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const d = r.nodes.find((n) => n.id === "d")!;
+    const dn = graph.nodes.find((n) => n.id === "d")!;
+    const shapeBottom = d.y + dn.cy + dn.shapeHeight / 2;
+    const shapeRight = d.x + dn.cx + dn.shapeWidth / 2;
+    const no = r.edges.find((e) => e.id === "d->x")!;
+    const yes = r.edges.find((e) => e.id === "d->y")!;
+    expect(no.points[0].x).toBeCloseTo(shapeRight);
+    expect(yes.points[0].y).toBeCloseTo(shapeBottom);
+    expect(yes.points[0].x).toBeCloseTo(d.x + dn.cx);
+    expect(d.labelSide).toBe("above");
+    expect(r.nodes.find((n) => n.id === "x")!.labelSide).toBe("below");
+    // The pill for the side exit sits beyond the shape on its own line.
+    expect(yes.labelAt!.x).toBeCloseTo(d.x + dn.cx);
+    expect(yes.labelAt!.y).toBeGreaterThan(shapeBottom);
+  });
+});

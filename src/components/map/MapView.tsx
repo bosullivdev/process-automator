@@ -365,7 +365,6 @@ export function MapView({
                 step={ln.kind === "fork" || ln.kind === "join" ? undefined : step}
                 colours={colours}
                 mode={mode}
-                orientation={layout.orientation}
                 selected={!!step && step.id === selectedStepId}
                 flags={step ? flags.get(step.id) : undefined}
                 onSelect={(id) => {

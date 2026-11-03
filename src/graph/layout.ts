@@ -1,5 +1,6 @@
 import type { ELK, ElkNode } from "elkjs/lib/elk-api";
 import type {
+  LabelSide,
   LaneBox,
   LayoutGraph,
   LayoutResult,
@@ -41,6 +42,8 @@ interface FLNode {
   aF0: number;
   aF1: number;
   aL: number;
+  /** Half of the shape's extent along the lane axis (for top/bottom exits). */
+  aLHalf: number;
   row: number;
   rowBottom: number; // l of the bottom of this node's row slot
   rowGutter: number; // node-free l just below the row
@@ -105,6 +108,7 @@ export async function layoutGraph(
     const aF0 = horizontal ? n.cx - n.shapeWidth / 2 : n.cy - n.shapeHeight / 2;
     const aF1 = horizontal ? n.cx + n.shapeWidth / 2 : n.cy + n.shapeHeight / 2;
     const aL = horizontal ? n.cy : n.cx;
+    const aLHalf = (horizontal ? n.shapeHeight : n.shapeWidth) / 2;
     nodes.set(n.id, {
       id: n.id,
       layer: layerOfX.get(Math.round(c.x ?? 0)) ?? 0,
@@ -119,6 +123,7 @@ export async function layoutGraph(
       aF0,
       aF1,
       aL,
+      aLHalf,
       row: 0,
       rowBottom: 0,
       rowGutter: 0,
@@ -184,7 +189,21 @@ export async function layoutGraph(
     return true;
   };
 
+  /** True when a run along the lane axis at flow-coordinate f between l0 and l1 touches no node (other than skip). */
+  const clearColumn = (f: number, l0: number, l1: number, skip: Set<string>): boolean => {
+    const lo = Math.min(l0, l1);
+    const hi = Math.max(l0, l1);
+    for (const n of nodes.values()) {
+      if (skip.has(n.id)) continue;
+      if (f < n.f0 - COLLIDE_MARGIN || f > n.f1 + COLLIDE_MARGIN) continue;
+      if (n.l1 + COLLIDE_MARGIN <= lo || n.l0 - COLLIDE_MARGIN >= hi) continue;
+      return false;
+    }
+    return true;
+  };
+
   type PlanKind = "straight" | "targetLine" | "sourceLine" | "gutter" | "back";
+  type Exit = "front" | "down" | "up";
   interface EdgePlan {
     e: (typeof graph.edges)[number];
     s: FLNode;
@@ -195,6 +214,7 @@ export async function layoutGraph(
     rail: number; // gutter or back rail l-coordinate (gutter/back only)
     needA: boolean; // channel after the source
     needB: boolean; // channel before the target
+    exit: Exit; // which side of the source shape the edge leaves from
   }
 
   /*
@@ -216,7 +236,18 @@ export async function layoutGraph(
     const sf1 = s.f0 + s.aF1;
     const tf0 = t.f0 + t.aF0;
     const skip = new Set([s.id, t.id]);
-    const plan: EdgePlan = { e, s, t, sc, tc, kind: "back", rail: 0, needA: true, needB: true };
+    const plan: EdgePlan = {
+      e,
+      s,
+      t,
+      sc,
+      tc,
+      kind: "back",
+      rail: 0,
+      needA: true,
+      needB: true,
+      exit: "front",
+    };
     if (t.layer > s.layer) {
       const colEndS = colStart(s.layer) + NODE_F;
       const colStartT = colStart(t.layer);
@@ -244,6 +275,45 @@ export async function layoutGraph(
       backIndex++;
     }
     plans.push(plan);
+  }
+
+  /*
+   * Side exits. A node with several outgoing edges sends the one that turns
+   * nearest out of the top or bottom of its shape instead of its front, so
+   * outcomes are told apart by where they leave. Only one side exit per node;
+   * its name then moves to the other side (labelSide).
+   */
+  const labelSide = new Map<string, LabelSide>();
+  const defaultSide: LabelSide = orientation === "horizontal" ? "below" : "right";
+  const flippedSide: LabelSide = orientation === "horizontal" ? "above" : "left";
+  const bySourceAll = new Map<string, EdgePlan[]>();
+  for (const p of plans) bySourceAll.set(p.e.from, [...(bySourceAll.get(p.e.from) ?? []), p]);
+  for (const [sourceId, group] of bySourceAll) {
+    const s = nodes.get(sourceId)!;
+    labelSide.set(sourceId, defaultSide);
+    if (group.length < 2) continue;
+    const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
+    const candidates = group
+      .filter((p) => p.kind === "targetLine" || p.kind === "gutter" || p.kind === "back")
+      .map((p) => {
+        const goal = p.kind === "targetLine" ? p.tc : p.rail;
+        return { p, goal, dist: Math.abs(goal - p.sc) };
+      })
+      .filter(({ goal, p }) => Math.abs(goal - p.sc) > s.aLHalf + 4)
+      .sort((a, b) => a.dist - b.dist || a.p.e.id.localeCompare(b.p.e.id));
+    for (const { p, goal } of candidates) {
+      const down = goal > p.sc;
+      const edgeL = p.sc + (down ? s.aLHalf : -s.aLHalf);
+      const skip = new Set([s.id, p.t.id]);
+      if (!clearColumn(sfc, edgeL, goal, skip)) continue;
+      if (p.kind === "targetLine" && !clearRun(sfc, p.t.f0 + p.t.aF0, p.tc, skip)) continue;
+      p.exit = down ? "down" : "up";
+      p.needA = false;
+      // The name moves to the side the edge does not use (only when the box reserved it).
+      const symmetric = graph.nodes.find((n) => n.id === sourceId)?.text.symmetric;
+      if (symmetric) labelSide.set(sourceId, down ? flippedSide : defaultSide);
+      break;
+    }
   }
 
   // Assign channel positions: spread the segments in each gap by their row order.
@@ -276,26 +346,36 @@ export async function layoutGraph(
   for (const p of labelled) bySource.set(p.e.from, [...(bySource.get(p.e.from) ?? []), p]);
   const labelFL = new Map<string, { f: number; l: number }>();
   for (const group of bySource.values()) {
-    const horizontal = group.filter((p) => p.kind === "straight" || p.kind === "sourceLine");
-    const vertical = group.filter((p) => !horizontal.includes(p));
-    let along = 6;
+    const horizontal = group.filter(
+      (p) => p.exit === "front" && (p.kind === "straight" || p.kind === "sourceLine"),
+    );
+    const side = group.filter((p) => p.exit !== "front");
+    const vertical = group.filter((p) => !horizontal.includes(p) && !side.includes(p));
+    let along = 8;
     for (const p of horizontal) {
       const w = labelWidth(p.e.label!);
-      labelFL.set(p.e.id, { f: p.s.f0 + p.s.aF1 + along + w / 2, l: p.sc - LABEL_H / 2 - 3 });
+      labelFL.set(p.e.id, { f: p.s.f0 + p.s.aF1 + along + w / 2, l: p.sc });
       along += w + 8;
+    }
+    for (const p of side) {
+      const w = labelWidth(p.e.label!);
+      const sfc = p.s.f0 + (p.s.aF0 + p.s.aF1) / 2;
+      const ext = orientation === "horizontal" ? LABEL_H : w;
+      const off = p.s.aLHalf + 8 + ext / 2;
+      labelFL.set(p.e.id, { f: sfc, l: p.sc + (p.exit === "down" ? off : -off) });
     }
     // Channel-side pills stack away from the source line. The step is the pill's
     // extent along the lane axis: its height when lanes stack vertically, its
     // width when lanes sit side by side (vertical flow).
     const extentAlongL = (w: number) => (orientation === "horizontal" ? LABEL_H : w);
-    const stacks = { up: horizontal.length ? LABEL_H + 6 : 0, down: 0 };
+    const stacks = { up: 0, down: 0 };
     for (const p of vertical) {
       const w = labelWidth(p.e.label!);
       const fa = channelF.get(`${p.e.id}:a`) ?? p.s.f0 + p.s.aF1 + 12;
       const goal = p.kind === "targetLine" ? p.tc : p.rail;
       const dir = goal >= p.sc ? "down" : "up";
       const ext = extentAlongL(w);
-      const want = 6 + stacks[dir] + ext / 2;
+      const want = 16 + stacks[dir] + ext / 2;
       stacks[dir] += ext + 6;
       const span = Math.abs(goal - p.sc);
       const h = Math.min(want, Math.max(span / 2, 10));
@@ -311,6 +391,26 @@ export async function layoutGraph(
     const fa = channelF.get(`${e.id}:a`) ?? sf1;
     const fb = channelF.get(`${e.id}:b`) ?? tf0;
     const pts: Point[] = [];
+    if (p.exit !== "front") {
+      const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
+      const edgeL = sc + (p.exit === "down" ? s.aLHalf : -s.aLHalf);
+      if (p.kind === "targetLine") {
+        pts.push(toXY(sfc, edgeL), toXY(sfc, tc), toXY(tf0, tc));
+      } else {
+        pts.push(
+          toXY(sfc, edgeL),
+          toXY(sfc, p.rail),
+          toXY(fb, p.rail),
+          toXY(fb, tc),
+          toXY(tf0, tc),
+        );
+      }
+      const routed: RoutedEdge = { id: e.id, points: dedupe(pts) };
+      const lab = labelFL.get(e.id);
+      if (lab) routed.labelAt = toXY(lab.f, lab.l);
+      edges.push(routed);
+      continue;
+    }
     switch (p.kind) {
       case "straight":
         pts.push(toXY(sf1, sc), toXY(tf0, tc));
@@ -358,7 +458,15 @@ export async function layoutGraph(
   const positioned: PositionedNode[] = graph.nodes.map((n) => {
     const fl = nodes.get(n.id)!;
     const p = toXY(fl.f0, fl.l0);
-    return { id: n.id, x: p.x, y: p.y, width: n.width, height: n.height, layer: fl.layer };
+    return {
+      id: n.id,
+      x: p.x,
+      y: p.y,
+      width: n.width,
+      height: n.height,
+      layer: fl.layer,
+      labelSide: labelSide.get(n.id) ?? defaultSide,
+    };
   });
 
   const total = toXY(fEnd, lEnd);

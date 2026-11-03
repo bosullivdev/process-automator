@@ -1,6 +1,6 @@
 import type { Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
-import type { LayoutNode, Orientation, PositionedNode } from "../../graph/layout-types";
+import type { LayoutNode, PositionedNode } from "../../graph/layout-types";
 import type { ResolvedColour } from "../../design/palette";
 
 export interface NodeColours {
@@ -14,7 +14,6 @@ interface Props {
   step: Step | undefined;
   colours: NodeColours;
   mode: "simple" | "bpmn";
-  orientation: Orientation;
   selected: boolean;
   flags: Flag[] | undefined;
   onSelect: (stepId: string) => void;
@@ -28,7 +27,6 @@ export function MapNode({
   step,
   colours,
   mode,
-  orientation,
   selected,
   flags,
   onSelect,
@@ -154,9 +152,17 @@ export function MapNode({
   const blockH = nameLines.length * LINE_H + (showTech ? LINE_H : 0);
   const blockTop = cy - blockH / 2 - (hasDots ? 4 : 0);
   const outside = text.outside;
-  const labelRight = outside && orientation === "vertical";
-  const labelX = labelRight ? x + width + 4 : cx;
-  const labelTop = labelRight ? cy - text.labelHeight / 2 : y + height + 4;
+  const side = node.labelSide;
+  const labelRight = outside && side === "right";
+  const labelLeft = outside && side === "left";
+  const labelX = labelRight ? x + width + 4 : labelLeft ? x - 4 : cx;
+  const labelTop =
+    labelRight || labelLeft
+      ? cy - text.labelHeight / 2
+      : side === "above"
+        ? y - 4 - text.labelHeight
+        : y + height + 4;
+  const anchor = labelRight ? "start" : labelLeft ? "end" : "middle";
 
   return (
     <g
@@ -184,7 +190,7 @@ export function MapNode({
         <text
           x={outside ? labelX : cx}
           y={outside ? labelTop + LINE_H / 2 : blockTop + LINE_H / 2}
-          textAnchor={labelRight ? "start" : "middle"}
+          textAnchor={outside ? anchor : "middle"}
           dominantBaseline="central"
           fontSize={outside ? 11 : 12}
           fontWeight={500}

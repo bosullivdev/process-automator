@@ -37,7 +37,7 @@ function sizeGateway(kind: "fork" | "join"): Sized {
     shapeHeight: height,
     cx: width / 2,
     cy: height / 2,
-    text: { nameLines: [], outside: false, labelWidth: 0, labelHeight: 0 },
+    text: { nameLines: [], outside: false, labelWidth: 0, labelHeight: 0, symmetric: false },
   };
 }
 
@@ -48,7 +48,7 @@ function sizeGateway(kind: "fork" | "join"): Sized {
  * when flow runs top-to-bottom. The box includes that label so rows reserve
  * room for it; edges attach to the shape via (cx, cy).
  */
-export function sizeStep(step: Step, orientation: Orientation): Sized {
+export function sizeStep(step: Step, orientation: Orientation, multiExit = false): Sized {
   const kind: LayoutNodeKind = step.type;
   const name = step.name.trim() || "Untitled";
   if (kind === "task") {
@@ -70,31 +70,43 @@ export function sizeStep(step: Step, orientation: Orientation): Sized {
       shapeHeight: height,
       cx: width / 2,
       cy: height / 2,
-      text: { nameLines, tech, outside: false, labelWidth: 0, labelHeight: 0 },
+      text: { nameLines, tech, outside: false, labelWidth: 0, labelHeight: 0, symmetric: false },
     };
   }
   const { width: sw, height: sh } = NODE_SIZE[kind];
   const nameLines = wrapToWidth(name, OUTSIDE_MAX_WIDTH, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
   const labelWidth = Math.ceil(linesWidth(nameLines, OUTSIDE_SIZE, 500));
   const labelHeight = nameLines.length * LINE_H;
-  const text: NodeText = { nameLines, outside: true, labelWidth, labelHeight };
+  // A node with several outgoing links may send one of them out of the top or
+  // bottom of the shape; the name then moves to the other side, so reserve
+  // label space on both sides.
+  const text: NodeText = {
+    nameLines,
+    outside: true,
+    labelWidth,
+    labelHeight,
+    symmetric: multiExit,
+  };
+  const reserve = multiExit ? 2 : 1;
   if (orientation === "horizontal") {
+    const extra = OUTSIDE_GAP + labelHeight;
     return {
       width: sw,
-      height: sh + OUTSIDE_GAP + labelHeight,
+      height: sh + extra * reserve,
       shapeWidth: sw,
       shapeHeight: sh,
       cx: sw / 2,
-      cy: sh / 2,
+      cy: sh / 2 + (multiExit ? extra : 0),
       text,
     };
   }
+  const extra = OUTSIDE_GAP + labelWidth;
   return {
-    width: sw + OUTSIDE_GAP + labelWidth,
+    width: sw + extra * reserve,
     height: sh,
     shapeWidth: sw,
     shapeHeight: sh,
-    cx: sw / 2,
+    cx: sw / 2 + (multiExit ? extra : 0),
     cy: sh / 2,
     text,
   };
@@ -155,15 +167,15 @@ export function buildLayoutGraph(
         stepId: s.id,
       });
     }
+    const validLinks = s.next.filter((l) => l.targetId !== s.id && byId.has(l.targetId));
     nodes.push({
       id: s.id,
       kind: s.type,
       laneId: lane,
-      ...sizeStep(s, orientation),
+      ...sizeStep(s, orientation, validLinks.length >= 2),
       pinFirst: s.type === "start",
       stepId: s.id,
     });
-    const validLinks = s.next.filter((l) => l.targetId !== s.id && byId.has(l.targetId));
     const hasFork = bpmn && s.type === "task" && validLinks.length >= 2;
     if (hasFork) {
       nodes.push({
