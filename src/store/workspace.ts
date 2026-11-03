@@ -26,6 +26,44 @@ import {
 
 export type SaveStatus = "saved" | "saving" | "unsaved";
 
+/** The options offered in the table's Type dropdown. */
+export type StepVariant =
+  | "start"
+  | "start:message"
+  | "start:timer"
+  | "task"
+  | "task:sub"
+  | "decision"
+  | "end"
+  | "end:terminate";
+
+export function stepVariant(
+  step: Pick<Step, "type" | "startKind" | "endKind" | "isSubProcess">,
+): StepVariant {
+  switch (step.type) {
+    case "start":
+      return step.startKind === "message" || step.startKind === "timer"
+        ? `start:${step.startKind}`
+        : "start";
+    case "task":
+      return step.isSubProcess ? "task:sub" : "task";
+    case "end":
+      return step.endKind === "terminate" ? "end:terminate" : "end";
+    default:
+      return "decision";
+  }
+}
+
+/** Apply a type change to a step in place: links and kind fields are kept consistent. */
+function applyType(s: Step, type: StepType): void {
+  s.type = type;
+  if (type === "end") s.next = [];
+  if (type !== "decision") s.next = s.next.map((l) => ({ targetId: l.targetId }));
+  if (type !== "start") delete s.startKind;
+  if (type !== "end") delete s.endKind;
+  if (type !== "task") delete s.isSubProcess;
+}
+
 /** The undoable part of the state. */
 export interface DocState {
   meta: Workspace["meta"];
@@ -46,6 +84,8 @@ export interface StoreState extends DocState {
   addStep: (processId: string, opts?: { afterStepId?: string; partial?: Partial<Step> }) => string;
   updateStep: (processId: string, stepId: string, patch: Partial<Step>) => void;
   setStepType: (processId: string, stepId: string, type: StepType) => void;
+  /** Set type and its variant (start kind, end kind, sub-process marker) as one undoable edit. */
+  setStepVariant: (processId: string, stepId: string, variant: StepVariant) => void;
   setStepOwner: (processId: string, stepId: string, partyId: string | null) => void;
   setStepNext: (processId: string, stepId: string, next: NextLink[]) => void;
   removeLink: (processId: string, stepId: string, targetId: string) => void;
@@ -166,14 +206,24 @@ export const useStore = create<StoreState>()(
         setStepType: (processId, stepId, type) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
+            if (s) applyType(s, type);
+          }),
+        setStepVariant: (processId, stepId, variant) =>
+          edit((d) => {
+            const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
             if (!s) return;
-            s.type = type;
-            if (type === "end") s.next = [];
-            if (type !== "decision") {
-              s.next = s.next.map((l) => ({ targetId: l.targetId }));
+            const [type, kind] = variant.split(":") as [StepType, string | undefined];
+            applyType(s, type);
+            if (type === "start") {
+              if (kind === "message" || kind === "timer") s.startKind = kind;
+              else delete s.startKind;
+            } else if (type === "end") {
+              if (kind === "terminate") s.endKind = "terminate";
+              else delete s.endKind;
+            } else if (type === "task") {
+              if (kind === "sub") s.isSubProcess = true;
+              else delete s.isSubProcess;
             }
-            if (type !== "start") delete s.startKind;
-            if (type !== "end") delete s.endKind;
           }),
         setStepOwner: (processId, stepId, partyId) =>
           edit((d) => {

@@ -73,3 +73,36 @@ describe("store undo/redo", () => {
     expect(copy.displayNo).toBe(3);
   });
 });
+
+describe("step variants", () => {
+  it("maps variants to type and kind fields and back, as one undo entry", async () => {
+    const { stepVariant } = await import("../src/store/workspace");
+    useStore.getState().hydrate(createEmptyWorkspace());
+    const s = useStore.getState();
+    const procId = s.view.activeProcessId!;
+    const a = s.addStep(procId);
+    const b = useStore.getState().addStep(procId);
+    useStore.getState().setStepNext(procId, a, [{ targetId: b }]);
+    const get = () => useStore.getState().processes[0].steps.find((x) => x.id === a)!;
+
+    useStore.getState().setStepVariant(procId, a, "start:timer");
+    expect(get()).toMatchObject({ type: "start", startKind: "timer" });
+    expect(stepVariant(get())).toBe("start:timer");
+
+    useStore.getState().setStepVariant(procId, a, "task:sub");
+    expect(get()).toMatchObject({ type: "task", isSubProcess: true });
+    expect(get().startKind).toBeUndefined();
+    expect(stepVariant(get())).toBe("task:sub");
+
+    useStore.getState().setStepVariant(procId, a, "end:terminate");
+    expect(get()).toMatchObject({ type: "end", endKind: "terminate", next: [] });
+    expect(get().isSubProcess).toBeUndefined();
+
+    useStore.getState().setStepVariant(procId, a, "end");
+    expect(get().endKind).toBeUndefined();
+    expect(stepVariant(get())).toBe("end");
+
+    undo();
+    expect(stepVariant(get())).toBe("end:terminate");
+  });
+});

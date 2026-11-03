@@ -12,7 +12,9 @@ a static site.
 
 - **Table (left)**: one row per step. Columns: No, Name, Owner, Type, Next,
   Technology, Contributors, Notes. Row order has no meaning; flow is defined by
-  the Next column.
+  the Next column. The Type dropdown lists each type with its variants
+  (message or timer start, sub-process task, terminate end) so a row needs a
+  single choice.
 - **Keyboard**: Enter adds a row below; Tab moves across cells; Escape closes
   pickers; Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z undo and redo; Cmd/Ctrl+D
   duplicates the row (everything except Next); Delete on the No cell deletes

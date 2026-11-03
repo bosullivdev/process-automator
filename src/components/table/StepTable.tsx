@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { NextLink, Process, Step, StepType } from "../../model/types";
+import type { NextLink, Process, Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import { worstSeverity } from "../../model/validate";
-import { useStore } from "../../store/workspace";
+import { stepVariant, useStore, type StepVariant } from "../../store/workspace";
 import { OwnerCombobox } from "./OwnerCombobox";
 import { ContributorsCombobox } from "./ContributorsCombobox";
 import { NextPicker } from "./NextPicker";
@@ -14,15 +14,13 @@ interface Props {
   flags: Map<string, Flag[]>;
 }
 
-const TYPES: StepType[] = ["start", "task", "decision", "end"];
-
 export function StepTable({ process, flags }: Props) {
   const parties = useStore((s) => s.parties);
   const selectedStepId = useStore((s) => s.selectedStepId);
   const selectStep = useStore((s) => s.selectStep);
   const addStep = useStore((s) => s.addStep);
   const updateStep = useStore((s) => s.updateStep);
-  const setStepType = useStore((s) => s.setStepType);
+  const setStepVariant = useStore((s) => s.setStepVariant);
   const setStepOwner = useStore((s) => s.setStepOwner);
   const setStepNext = useStore((s) => s.setStepNext);
   const deleteStep = useStore((s) => s.deleteStep);
@@ -122,7 +120,7 @@ export function StepTable({ process, flags }: Props) {
             <Th className="w-14">No</Th>
             <Th className="w-[22%]">Name</Th>
             <Th className="w-[13%]">Owner</Th>
-            <Th className="w-[200px]">Type</Th>
+            <Th className="w-[168px]">Type</Th>
             <Th className="w-[19%]">Next</Th>
             <Th className="w-[11%]">Technology</Th>
             <Th className="w-[13%]">Contributors</Th>
@@ -212,68 +210,31 @@ export function StepTable({ process, flags }: Props) {
                   />
                 </Td>
                 <Td>
-                  <div className="flex h-full items-center gap-1 px-1">
-                    <select
-                      className="cell-input h-7 min-w-0 flex-1 rounded px-1"
-                      aria-label="Step type"
-                      value={step.type}
-                      onChange={(e) => setStepType(process.id, step.id, e.target.value as StepType)}
-                    >
-                      {TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                    {step.type === "start" && (
-                      <select
-                        className="cell-input h-7 w-24 shrink-0 rounded px-1 text-xs text-[var(--text-muted)]"
-                        aria-label="Start kind"
-                        value={step.startKind ?? "none"}
-                        onChange={(e) =>
-                          updateStep(process.id, step.id, {
-                            startKind: e.target.value as Step["startKind"],
-                          })
-                        }
-                      >
-                        <option value="none">plain</option>
-                        <option value="message">message</option>
-                        <option value="timer">timer</option>
-                      </select>
-                    )}
-                    {step.type === "end" && (
-                      <select
-                        className="cell-input h-7 w-24 shrink-0 rounded px-1 text-xs text-[var(--text-muted)]"
-                        aria-label="End kind"
-                        value={step.endKind ?? "normal"}
-                        onChange={(e) =>
-                          updateStep(process.id, step.id, {
-                            endKind: e.target.value as Step["endKind"],
-                          })
-                        }
-                      >
-                        <option value="normal">normal</option>
-                        <option value="terminate">terminate</option>
-                      </select>
-                    )}
-                    {step.type === "task" && (
-                      <label
-                        className="flex shrink-0 items-center gap-1 px-1 text-[11px] whitespace-nowrap text-[var(--text-muted)]"
-                        title="Mark as a sub-process"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!step.isSubProcess}
-                          onChange={(e) =>
-                            updateStep(process.id, step.id, {
-                              isSubProcess: e.target.checked || undefined,
-                            })
-                          }
-                        />
-                        sub
-                      </label>
-                    )}
-                  </div>
+                  <select
+                    className="cell-input h-8 px-2"
+                    aria-label="Step type"
+                    value={stepVariant(step)}
+                    onChange={(e) =>
+                      setStepVariant(process.id, step.id, e.target.value as StepVariant)
+                    }
+                  >
+                    <optgroup label="Start">
+                      <option value="start">start</option>
+                      <option value="start:message">start · message</option>
+                      <option value="start:timer">start · timer</option>
+                    </optgroup>
+                    <optgroup label="Task">
+                      <option value="task">task</option>
+                      <option value="task:sub">task · sub-process</option>
+                    </optgroup>
+                    <optgroup label="Decision">
+                      <option value="decision">decision</option>
+                    </optgroup>
+                    <optgroup label="End">
+                      <option value="end">end</option>
+                      <option value="end:terminate">end · terminate</option>
+                    </optgroup>
+                  </select>
                 </Td>
                 <Td>
                   <NextPicker
