@@ -5,6 +5,7 @@ import { ValidationPanel } from "./components/ValidationPanel";
 import { MapView } from "./components/map/MapView";
 import { PartySheet } from "./components/PartySheet";
 import { ProcessSwitcher } from "./components/ProcessSwitcher";
+import { ExportMenu, ImportButton, StorageNotice } from "./components/ExportMenu";
 import { Toaster } from "./components/ui/Toaster";
 import { buildLayoutGraph } from "./graph/build-graph";
 import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
@@ -115,6 +116,8 @@ export default function App() {
           Parties
           <span className="text-xs text-[var(--text-muted)]">{parties.length}</span>
         </button>
+        <ImportButton />
+        <ExportMenu process={process} layout={layout} />
         <button
           className="btn"
           aria-label="Toggle orientation"
@@ -133,11 +136,26 @@ export default function App() {
         >
           {view.shapeMode === "simple" ? "Simple" : "BPMN"}
         </button>
-        <span className="text-xs text-[var(--text-muted)]">{saveStatus}</span>
+        <span
+          className="flex items-center gap-1 text-xs text-[var(--text-muted)]"
+          data-testid="save-status"
+          aria-live="polite"
+        >
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: saveStatus === "saved" ? "var(--color-ok)" : "var(--color-warn)" }}
+          />
+          {saveStatus === "saved"
+            ? "Saved"
+            : saveStatus === "saving"
+              ? "Saving…"
+              : "Unsaved changes"}
+        </span>
         <button className="btn" onClick={cycleTheme} aria-label="Theme">
           Theme: {view.theme}
         </button>
       </header>
+      <StorageNotice />
       {narrow ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div
