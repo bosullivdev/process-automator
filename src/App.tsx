@@ -1,19 +1,23 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SplitPane } from "./components/SplitPane";
+import { StepTable } from "./components/table/StepTable";
+import { Toaster } from "./components/ui/Toaster";
 import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
 import { useApplyTheme } from "./hooks/useTheme";
-import { redo, undo, useStore } from "./store/workspace";
+import { flagsByStep, validateProcess } from "./model/validate";
 import { startAutosave } from "./store/autosave";
-import { useState } from "react";
+import { redo, selectActiveProcess, undo, useStore } from "./store/workspace";
 
 export default function App() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const saveStatus = useStore((s) => s.saveStatus);
   const hydrated = useStore((s) => s.hydrated);
+  const parties = useStore((s) => s.parties);
+  const process = useStore(selectActiveProcess);
   const [tab, setTab] = useState<"table" | "map">("table");
   const narrow = useMediaQuery(NARROW_QUERY);
-  useApplyTheme(view.theme);
+  useApplyTheme();
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -25,8 +29,6 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.key.toLowerCase() !== "z") return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       e.preventDefault();
       if (e.shiftKey) redo();
       else undo();
@@ -35,16 +37,22 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const flags = useMemo(
+    () => (process ? validateProcess(process, { parties }) : []),
+    [process, parties],
+  );
+  const flagMap = useMemo(() => flagsByStep(flags), [flags]);
+
   const onRatio = useCallback((splitRatio: number) => setView({ splitRatio }), [setView]);
   const cycleTheme = () =>
     setView({
       theme: view.theme === "system" ? "light" : view.theme === "light" ? "dark" : "system",
     });
 
-  const table = <div className="h-full p-4 text-sm text-[var(--text-muted)]">Table</div>;
-  const map = <div className="h-full p-4 text-sm text-[var(--text-muted)]">Map</div>;
+  if (!hydrated || !process) return null;
 
-  if (!hydrated) return null;
+  const table = <StepTable process={process} flags={flagMap} />;
+  const map = <div className="h-full p-4 text-sm text-[var(--text-muted)]">Map</div>;
 
   return (
     <div className="flex h-full flex-col">
@@ -85,6 +93,7 @@ export default function App() {
           <SplitPane ratio={view.splitRatio} onRatioChange={onRatio} left={table} right={map} />
         </div>
       )}
+      <Toaster />
     </div>
   );
 }

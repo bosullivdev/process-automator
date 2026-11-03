@@ -91,17 +91,25 @@ function ensureLane(proc: Process, partyId: string | null): void {
 
 const initial = createEmptyWorkspace();
 
+/** Typing into a cell sets this so consecutive keystrokes share one undo entry. */
+let coalesceNext = false;
+let lastRecordAt = 0;
+const COALESCE_MS = 800;
+
 export const useStore = create<StoreState>()(
   temporal(
     (set, get) => {
       /** Apply an immer recipe to the document part of the state. */
-      const edit = (recipe: (doc: DocState) => void) =>
+      const edit = (recipe: (doc: DocState) => void, coalesce = false) => {
+        coalesceNext = coalesce;
         set((state) =>
           produce({ meta: state.meta, parties: state.parties, processes: state.processes }, (d) => {
             recipe(d);
             touch(d);
           }),
         );
+        coalesceNext = false;
+      };
 
       return {
         meta: initial.meta,
@@ -144,13 +152,17 @@ export const useStore = create<StoreState>()(
           return step.id;
         },
         updateStep: (processId, stepId, patch) =>
-          edit((d) => {
-            const proc = findProcess(d, processId);
-            const s = proc?.steps.find((x) => x.id === stepId);
-            if (!proc || !s) return;
-            Object.assign(s, patch);
-            if ("ownerId" in patch) ensureLane(proc, s.ownerId);
-          }),
+          edit(
+            (d) => {
+              const proc = findProcess(d, processId);
+              const s = proc?.steps.find((x) => x.id === stepId);
+              if (!proc || !s) return;
+              Object.assign(s, patch);
+              if ("ownerId" in patch) ensureLane(proc, s.ownerId);
+            },
+            // Text edits coalesce; structural edits always get their own entry.
+            Object.keys(patch).every((k) => ["name", "technology", "notes"].includes(k)),
+          ),
         setStepType: (processId, stepId, type) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
@@ -344,6 +356,17 @@ export const useStore = create<StoreState>()(
       equality: (a, b) =>
         a.parties === b.parties && a.processes === b.processes && a.meta === b.meta,
       limit: 200,
+      handleSet: (handleSet) => (pastState, replace) => {
+        const now = Date.now();
+        if (coalesceNext && now - lastRecordAt < COALESCE_MS) {
+          lastRecordAt = now;
+          return;
+        }
+        lastRecordAt = now;
+        // zundo only ever records partial (non-replacing) snapshots here.
+        void replace;
+        handleSet(pastState);
+      },
     },
   ),
 );
