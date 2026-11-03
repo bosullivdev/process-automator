@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SplitPane } from "./components/SplitPane";
 import { StepTable } from "./components/table/StepTable";
 import { ValidationPanel } from "./components/ValidationPanel";
+import { MapView } from "./components/map/MapView";
 import { Toaster } from "./components/ui/Toaster";
+import { buildLayoutGraph } from "./graph/build-graph";
 import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
 import { useApplyTheme } from "./hooks/useTheme";
+import { useLayout } from "./hooks/useLayout";
 import { flagsByStep, validateProcess } from "./model/validate";
 import { startAutosave } from "./store/autosave";
 import { redo, selectActiveProcess, undo, useStore } from "./store/workspace";
@@ -16,8 +19,10 @@ export default function App() {
   const hydrated = useStore((s) => s.hydrated);
   const parties = useStore((s) => s.parties);
   const process = useStore(selectActiveProcess);
+  const selectedStepId = useStore((s) => s.selectedStepId);
   const selectStep = useStore((s) => s.selectStep);
   const removeLink = useStore((s) => s.removeLink);
+  const setLaneOrder = useStore((s) => s.setLaneOrder);
   const [tab, setTab] = useState<"table" | "map">("table");
   const narrow = useMediaQuery(NARROW_QUERY);
   useApplyTheme();
@@ -45,6 +50,14 @@ export default function App() {
     [process, parties],
   );
   const flagMap = useMemo(() => flagsByStep(flags), [flags]);
+  const graph = useMemo(
+    () =>
+      process
+        ? buildLayoutGraph(process, parties, view.shapeMode)
+        : { laneOrder: [], nodes: [], edges: [] },
+    [process, parties, view.shapeMode],
+  );
+  const { layout, updating } = useLayout(graph, view.orientation);
 
   const onRatio = useCallback((splitRatio: number) => setView({ splitRatio }), [setView]);
   const cycleTheme = () =>
@@ -71,7 +84,20 @@ export default function App() {
       />
     </div>
   );
-  const map = <div className="h-full p-4 text-sm text-[var(--text-muted)]">Map</div>;
+  const map = (
+    <MapView
+      process={process}
+      parties={parties}
+      graph={graph}
+      layout={layout}
+      updating={updating}
+      mode={view.shapeMode}
+      selectedStepId={selectedStepId}
+      flags={flagMap}
+      onSelect={selectStep}
+      onReorderLanes={(laneOrder) => setLaneOrder(process.id, laneOrder)}
+    />
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -81,6 +107,16 @@ export default function App() {
       >
         <span className="font-semibold">Process Mapper</span>
         <div className="flex-1" />
+        <button
+          className="btn"
+          aria-label="Toggle orientation"
+          title="Orientation"
+          onClick={() =>
+            setView({ orientation: view.orientation === "horizontal" ? "vertical" : "horizontal" })
+          }
+        >
+          {view.orientation === "horizontal" ? "Horizontal" : "Vertical"}
+        </button>
         <span className="text-xs text-[var(--text-muted)]">{saveStatus}</span>
         <button className="btn" onClick={cycleTheme} aria-label="Theme">
           Theme: {view.theme}

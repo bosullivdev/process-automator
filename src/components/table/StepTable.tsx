@@ -122,7 +122,7 @@ export function StepTable({ process, flags }: Props) {
             <Th className="w-12">No</Th>
             <Th className="w-[20%]">Name</Th>
             <Th className="w-[14%]">Owner</Th>
-            <Th className="w-28">Type</Th>
+            <Th className="w-36">Type</Th>
             <Th className="w-[18%]">Next</Th>
             <Th className="w-[12%]">Technology</Th>
             <Th className="w-[14%]">Contributors</Th>
@@ -257,7 +257,7 @@ export function StepTable({ process, flags }: Props) {
                       </select>
                     )}
                     {step.type === "task" && (
-                      <label className="flex items-center gap-1 px-1 text-[11px] text-[var(--text-muted)]">
+                      <label className="flex items-center gap-1 px-1 text-[11px] whitespace-nowrap text-[var(--text-muted)]">
                         <input
                           type="checkbox"
                           checked={!!step.isSubProcess}

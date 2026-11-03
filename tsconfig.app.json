@@ -17,7 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "exactOptionalPropertyTypes": false,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "esModuleInterop": true
   },
   "include": ["src", "tests"]
 }
