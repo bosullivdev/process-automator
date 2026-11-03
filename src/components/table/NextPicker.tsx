@@ -113,7 +113,7 @@ export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets 
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Next steps"
-        className="flex h-7 w-full min-w-0 flex-wrap items-center gap-1 rounded px-1 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex min-h-7 w-full min-w-0 flex-wrap items-center gap-1 rounded px-1 py-1 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40"
         onClick={() => setOpen(true)}
         onKeyDown={onButtonKey}
       >
@@ -124,7 +124,7 @@ export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets 
         {summary.map(({ link, target, broken }) => (
           <span
             key={link.targetId}
-            className="inline-flex h-5 max-w-[150px] items-center gap-1 rounded-md border px-1.5 text-xs"
+            className="inline-flex h-5 max-w-full items-center gap-1 rounded-md border px-1.5 text-xs"
             style={{
               borderColor: broken ? "var(--color-danger)" : "var(--border)",
               color: broken ? "var(--color-danger)" : undefined,
@@ -134,14 +134,14 @@ export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets 
               <span className="truncate">missing</span>
             ) : (
               <>
-                <span className="font-mono font-tabular text-[var(--text-muted)]">
+                <span className="shrink-0 font-mono font-tabular text-[var(--text-muted)]">
                   {target!.displayNo}
                 </span>
-                <span className="truncate">{target!.name || "Untitled"}</span>
+                <span className="max-w-[140px] truncate">{target!.name || "Untitled"}</span>
               </>
             )}
             {isDecision && !broken && (
-              <span className="truncate rounded bg-[var(--surface-2)] px-1 italic">
+              <span className="max-w-[90px] shrink-0 truncate rounded bg-[var(--surface-2)] px-1 italic">
                 {link.label || "label?"}
               </span>
             )}

@@ -88,96 +88,99 @@ body {
   }
 }
 
-.font-tabular {
-  font-variant-numeric: tabular-nums;
-}
+/* Component classes live in the components layer so Tailwind utilities can override them. */
+@layer components {
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
 
-.btn {
-  @apply inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors select-none;
-  border-color: var(--border);
-  background: var(--surface);
-  color: var(--text);
-}
-.btn:hover {
-  background: var(--surface-2);
-}
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.btn-primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: #fff;
-}
-.btn-primary:hover {
-  background: var(--color-accent-strong);
-}
-.btn-ghost {
-  border-color: transparent;
-  background: transparent;
-}
-.btn-icon {
-  @apply h-8 w-8 justify-center px-0;
-}
-.btn-active {
-  background: var(--color-accent-soft);
-  border-color: var(--color-accent);
-  color: var(--color-accent-strong);
-}
-.dark .btn-active {
-  background: var(--color-accent-soft-dark);
-  color: #c7c9ff;
-}
+  .btn {
+    @apply inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors select-none;
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .btn:hover {
+    background: var(--surface-2);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: var(--color-accent-strong);
+  }
+  .btn-ghost {
+    border-color: transparent;
+    background: transparent;
+  }
+  .btn-icon {
+    @apply h-8 w-8 justify-center px-0;
+  }
+  .btn-active {
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent);
+    color: var(--color-accent-strong);
+  }
+  .dark .btn-active {
+    background: var(--color-accent-soft-dark);
+    color: #c7c9ff;
+  }
 
-.input {
-  @apply h-8 w-full rounded-lg border px-2 text-sm;
-  border-color: var(--border);
-  background: var(--surface);
-  color: var(--text);
-}
-.input:focus {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -1px;
-}
+  .input {
+    @apply h-8 w-full rounded-lg border px-2 text-sm;
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .input:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -1px;
+  }
 
-.cell-input {
-  @apply h-full w-full bg-transparent px-2 text-sm;
-  color: var(--text);
-  border: 0;
-}
-.cell-input:focus {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-  border-radius: 4px;
-}
+  .cell-input {
+    @apply h-full w-full bg-transparent px-2 text-sm;
+    color: var(--text);
+    border: 0;
+  }
+  .cell-input:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
 
-.menu {
-  @apply rounded-lg border p-1 shadow-lg;
-  border-color: var(--border);
-  background: var(--surface);
-}
-.menu-item {
-  @apply flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm;
-  color: var(--text);
-}
-.menu-item:hover,
-.menu-item[data-active="true"] {
-  background: var(--surface-2);
-}
-.menu-item[aria-selected="true"] {
-  background: var(--color-accent-soft);
-}
-.dark .menu-item[aria-selected="true"] {
-  background: var(--color-accent-soft-dark);
-}
+  .menu {
+    @apply rounded-lg border p-1 shadow-lg;
+    border-color: var(--border);
+    background: var(--surface);
+  }
+  .menu-item {
+    @apply flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm;
+    color: var(--text);
+  }
+  .menu-item:hover,
+  .menu-item[data-active="true"] {
+    background: var(--surface-2);
+  }
+  .menu-item[aria-selected="true"] {
+    background: var(--color-accent-soft);
+  }
+  .dark .menu-item[aria-selected="true"] {
+    background: var(--color-accent-soft-dark);
+  }
 
-.stripe-pattern {
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 6px,
-    rgba(0, 0, 0, 0.12) 6px,
-    rgba(0, 0, 0, 0.12) 7px
-  );
+  .stripe-pattern {
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 6px,
+      rgba(0, 0, 0, 0.12) 6px,
+      rgba(0, 0, 0, 0.12) 7px
+    );
+  }
 }

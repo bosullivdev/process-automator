@@ -116,18 +116,18 @@ export function StepTable({ process, flags }: Props) {
 
   return (
     <div ref={tableRef} className="h-full overflow-auto" data-testid="step-table">
-      <table className="w-full min-w-[980px] border-separate border-spacing-0 text-sm">
+      <table className="w-full min-w-[1180px] table-fixed border-separate border-spacing-0 text-sm">
         <thead className="sticky top-0 z-10" style={{ background: "var(--surface)" }}>
           <tr className="text-left text-xs font-medium text-[var(--text-muted)]">
-            <Th className="w-12">No</Th>
-            <Th className="w-[20%]">Name</Th>
-            <Th className="w-[14%]">Owner</Th>
-            <Th className="w-36">Type</Th>
-            <Th className="w-[18%]">Next</Th>
-            <Th className="w-[12%]">Technology</Th>
-            <Th className="w-[14%]">Contributors</Th>
+            <Th className="w-14">No</Th>
+            <Th className="w-[22%]">Name</Th>
+            <Th className="w-[13%]">Owner</Th>
+            <Th className="w-[200px]">Type</Th>
+            <Th className="w-[19%]">Next</Th>
+            <Th className="w-[11%]">Technology</Th>
+            <Th className="w-[13%]">Contributors</Th>
             <Th>Notes</Th>
-            <Th className="w-8"> </Th>
+            <Th className="w-9"> </Th>
           </tr>
         </thead>
         <tbody>
@@ -144,7 +144,7 @@ export function StepTable({ process, flags }: Props) {
                 }}
                 data-step-id={step.id}
                 data-selected={selected}
-                className="group h-9"
+                className="group"
                 style={{ background: selected ? "var(--selection)" : undefined }}
                 onFocus={() => {
                   if (selectedStepId !== step.id) selectStep(step.id);
@@ -212,9 +212,9 @@ export function StepTable({ process, flags }: Props) {
                   />
                 </Td>
                 <Td>
-                  <div className="flex h-full flex-col justify-center gap-0.5 px-1">
+                  <div className="flex h-full items-center gap-1 px-1">
                     <select
-                      className="cell-input h-6 rounded px-1"
+                      className="cell-input h-7 min-w-0 flex-1 rounded px-1"
                       aria-label="Step type"
                       value={step.type}
                       onChange={(e) => setStepType(process.id, step.id, e.target.value as StepType)}
@@ -227,7 +227,7 @@ export function StepTable({ process, flags }: Props) {
                     </select>
                     {step.type === "start" && (
                       <select
-                        className="cell-input h-5 rounded px-1 text-xs text-[var(--text-muted)]"
+                        className="cell-input h-7 w-24 shrink-0 rounded px-1 text-xs text-[var(--text-muted)]"
                         aria-label="Start kind"
                         value={step.startKind ?? "none"}
                         onChange={(e) =>
@@ -243,7 +243,7 @@ export function StepTable({ process, flags }: Props) {
                     )}
                     {step.type === "end" && (
                       <select
-                        className="cell-input h-5 rounded px-1 text-xs text-[var(--text-muted)]"
+                        className="cell-input h-7 w-24 shrink-0 rounded px-1 text-xs text-[var(--text-muted)]"
                         aria-label="End kind"
                         value={step.endKind ?? "normal"}
                         onChange={(e) =>
@@ -257,7 +257,10 @@ export function StepTable({ process, flags }: Props) {
                       </select>
                     )}
                     {step.type === "task" && (
-                      <label className="flex items-center gap-1 px-1 text-[11px] whitespace-nowrap text-[var(--text-muted)]">
+                      <label
+                        className="flex shrink-0 items-center gap-1 px-1 text-[11px] whitespace-nowrap text-[var(--text-muted)]"
+                        title="Mark as a sub-process"
+                      >
                         <input
                           type="checkbox"
                           checked={!!step.isSubProcess}
@@ -267,7 +270,7 @@ export function StepTable({ process, flags }: Props) {
                             })
                           }
                         />
-                        sub-process
+                        sub
                       </label>
                     )}
                   </div>
@@ -362,7 +365,7 @@ function Th({ children, className = "" }: { children: React.ReactNode; className
 
 function Td({ children }: { children: React.ReactNode }) {
   return (
-    <td className="h-9 border-b p-0 align-middle" style={{ borderColor: "var(--border)" }}>
+    <td className="h-10 border-b p-0 align-middle" style={{ borderColor: "var(--border)" }}>
       {children}
     </td>
   );
