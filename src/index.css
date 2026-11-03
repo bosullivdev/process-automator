@@ -35,6 +35,7 @@
   --lane-text: #18181b;
   --edge: #9ca3af;
   --unassigned: #9ca3af;
+  --selection: #e6e7f8;
   color-scheme: light;
 }
 
@@ -49,6 +50,7 @@
   --lane-text: #f4f4f5;
   --edge: #71717a;
   --unassigned: #71717a;
+  --selection: #2c2e55;
   color-scheme: dark;
 }
 

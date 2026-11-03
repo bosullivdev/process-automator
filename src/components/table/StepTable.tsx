@@ -145,7 +145,7 @@ export function StepTable({ process, flags }: Props) {
                 data-step-id={step.id}
                 data-selected={selected}
                 className="group h-9"
-                style={{ background: selected ? "var(--color-accent-soft)" : undefined }}
+                style={{ background: selected ? "var(--selection)" : undefined }}
                 onFocus={() => {
                   if (selectedStepId !== step.id) selectStep(step.id);
                 }}

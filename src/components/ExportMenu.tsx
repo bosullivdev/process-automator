@@ -174,7 +174,7 @@ export function StorageNotice() {
         <strong>Export → Workspace JSON</strong> to keep a real copy.
       </span>
       <button
-        className="btn h-6 px-2 text-xs"
+        className="btn h-6 shrink-0 px-2 text-xs whitespace-nowrap"
         onClick={() => {
           localStorage.setItem(NOTICE_KEY, "1");
           setDismissed(true);

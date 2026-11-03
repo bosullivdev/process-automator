@@ -106,10 +106,10 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <header
-        className="relative flex h-12 shrink-0 items-center gap-2 border-b px-3"
+        className="relative flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5"
         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
       >
-        <span className="font-semibold">Process Mapper</span>
+        <span className="font-semibold whitespace-nowrap">Process Mapper</span>
         <ProcessSwitcher />
         <div className="flex-1" />
         <button className="btn" aria-label="Parties" onClick={() => setPartiesOpen(true)}>
