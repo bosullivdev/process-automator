@@ -361,7 +361,7 @@ export function MapView({
               <MapNode
                 key={n.id}
                 node={n}
-                kind={ln.kind}
+                layoutNode={ln}
                 step={ln.kind === "fork" || ln.kind === "join" ? undefined : step}
                 colours={colours}
                 mode={mode}

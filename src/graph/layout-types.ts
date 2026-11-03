@@ -4,14 +4,33 @@ export type LayoutNodeKind = "start" | "task" | "decision" | "end" | "fork" | "j
 
 export const UNASSIGNED_LANE = "__unassigned";
 
+export interface NodeText {
+  /** Wrapped name lines, sized to the shape (or to the outside label width). */
+  nameLines: string[];
+  /** Technology line, already fitted to one line. */
+  tech?: string;
+  /** Whether the name is drawn outside the shape (start, end, decision). */
+  outside: boolean;
+  /** Outside label box size (0 when the name is inside). */
+  labelWidth: number;
+  labelHeight: number;
+}
+
 export interface LayoutNode {
   /** Step id, or a synthetic id for inserted gateways. */
   id: string;
   kind: LayoutNodeKind;
   laneId: string;
-  /** Screen-space size, independent of orientation. */
+  /** Screen-space size of the whole node box (shape plus any outside label). */
   width: number;
   height: number;
+  /** Size of the drawn shape inside the box. */
+  shapeWidth: number;
+  shapeHeight: number;
+  /** Shape centre relative to the box's top-left; edges attach to the shape. */
+  cx: number;
+  cy: number;
+  text: NodeText;
   /** Pin to the first layer (start steps). */
   pinFirst?: boolean;
   /** For gateways: the step this gateway was inserted for. */

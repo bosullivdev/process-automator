@@ -1,4 +1,4 @@
-import type { Party, Process } from "../model/types";
+import type { Party, Process, Step } from "../model/types";
 import { buildAdjacency, canReachEnd } from "./analysis";
 import {
   NODE_SIZE,
@@ -6,7 +6,99 @@ import {
   type LayoutEdge,
   type LayoutGraph,
   type LayoutNode,
+  type LayoutNodeKind,
+  type NodeText,
+  type Orientation,
 } from "./layout-types";
+import { linesWidth, wrapToWidth } from "./text-metrics";
+
+const NAME_SIZE = 12;
+const SUB_SIZE = 10;
+const OUTSIDE_SIZE = 11;
+const LINE_H = 14;
+const TASK_PAD_X = 12;
+const TASK_PAD_Y = 12;
+const MAX_NAME_LINES = 8;
+const OUTSIDE_MAX_WIDTH = 150;
+const OUTSIDE_MAX_LINES = 4;
+const OUTSIDE_GAP = 4;
+
+type Sized = Pick<
+  LayoutNode,
+  "width" | "height" | "shapeWidth" | "shapeHeight" | "cx" | "cy" | "text"
+>;
+
+function sizeGateway(kind: "fork" | "join"): Sized {
+  const { width, height } = NODE_SIZE[kind];
+  return {
+    width,
+    height,
+    shapeWidth: width,
+    shapeHeight: height,
+    cx: width / 2,
+    cy: height / 2,
+    text: { nameLines: [], outside: false, labelWidth: 0, labelHeight: 0 },
+  };
+}
+
+/**
+ * Size a step's node to its content. Tasks keep a fixed width and grow in
+ * height; start, end and decision shapes keep their size and carry the name
+ * outside: below the shape when flow runs left-to-right, to the right of it
+ * when flow runs top-to-bottom. The box includes that label so rows reserve
+ * room for it; edges attach to the shape via (cx, cy).
+ */
+export function sizeStep(step: Step, orientation: Orientation): Sized {
+  const kind: LayoutNodeKind = step.type;
+  const name = step.name.trim() || "Untitled";
+  if (kind === "task") {
+    const { width } = NODE_SIZE.task;
+    const inner = width - TASK_PAD_X * 2;
+    const nameLines = wrapToWidth(name, inner, NAME_SIZE, MAX_NAME_LINES, 500);
+    const tech = step.technology.trim()
+      ? wrapToWidth(step.technology.trim(), inner, SUB_SIZE, 1)[0]
+      : undefined;
+    const hasDots = step.contributorIds.length > 0 || !!step.isSubProcess;
+    const height = Math.max(
+      NODE_SIZE.task.height,
+      TASK_PAD_Y * 2 + nameLines.length * LINE_H + (tech ? LINE_H : 0) + (hasDots ? 10 : 0),
+    );
+    return {
+      width,
+      height,
+      shapeWidth: width,
+      shapeHeight: height,
+      cx: width / 2,
+      cy: height / 2,
+      text: { nameLines, tech, outside: false, labelWidth: 0, labelHeight: 0 },
+    };
+  }
+  const { width: sw, height: sh } = NODE_SIZE[kind];
+  const nameLines = wrapToWidth(name, OUTSIDE_MAX_WIDTH, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
+  const labelWidth = Math.ceil(linesWidth(nameLines, OUTSIDE_SIZE, 500));
+  const labelHeight = nameLines.length * LINE_H;
+  const text: NodeText = { nameLines, outside: true, labelWidth, labelHeight };
+  if (orientation === "horizontal") {
+    return {
+      width: sw,
+      height: sh + OUTSIDE_GAP + labelHeight,
+      shapeWidth: sw,
+      shapeHeight: sh,
+      cx: sw / 2,
+      cy: sh / 2,
+      text,
+    };
+  }
+  return {
+    width: sw + OUTSIDE_GAP + labelWidth,
+    height: sh,
+    shapeWidth: sw,
+    shapeHeight: sh,
+    cx: sw / 2,
+    cy: sh / 2,
+    text,
+  };
+}
 
 export type ShapeMode = "simple" | "bpmn";
 
@@ -28,6 +120,7 @@ export function buildLayoutGraph(
   process: Process,
   parties: readonly Party[],
   mode: ShapeMode,
+  orientation: Orientation = "horizontal",
 ): LayoutGraph {
   const steps = [...process.steps].sort((a, b) => a.displayNo - b.displayNo);
   const byId = new Map(steps.map((s) => [s.id, s]));
@@ -54,20 +147,32 @@ export function buildLayoutGraph(
     const lane = laneOf(s.ownerId);
     const hasJoin = bpmn && (incoming.get(s.id) ?? 0) >= 2;
     if (hasJoin) {
-      nodes.push({ id: joinId(s.id), kind: "join", laneId: lane, ...NODE_SIZE.join, stepId: s.id });
+      nodes.push({
+        id: joinId(s.id),
+        kind: "join",
+        laneId: lane,
+        ...sizeGateway("join"),
+        stepId: s.id,
+      });
     }
     nodes.push({
       id: s.id,
       kind: s.type,
       laneId: lane,
-      ...NODE_SIZE[s.type],
+      ...sizeStep(s, orientation),
       pinFirst: s.type === "start",
       stepId: s.id,
     });
     const validLinks = s.next.filter((l) => l.targetId !== s.id && byId.has(l.targetId));
     const hasFork = bpmn && s.type === "task" && validLinks.length >= 2;
     if (hasFork) {
-      nodes.push({ id: forkId(s.id), kind: "fork", laneId: lane, ...NODE_SIZE.fork, stepId: s.id });
+      nodes.push({
+        id: forkId(s.id),
+        kind: "fork",
+        laneId: lane,
+        ...sizeGateway("fork"),
+        stepId: s.id,
+      });
       edges.push({
         id: `${s.id}->${forkId(s.id)}`,
         from: s.id,

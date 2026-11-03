@@ -37,6 +37,10 @@ interface FLNode {
   f1: number;
   l0: number;
   l1: number;
+  /** Shape attachment points relative to the box: edges leave/enter the shape, not the box. */
+  aF0: number;
+  aF1: number;
+  aL: number;
   row: number;
   rowBottom: number; // l of the bottom of this node's row slot
   rowGutter: number; // node-free l just below the row
@@ -97,6 +101,10 @@ export async function layoutGraph(
   for (const c of laid.children ?? []) {
     const n = graph.nodes.find((g) => g.id === c.id)!;
     const [fExtent, lExtent] = extents(n.width, n.height, orientation);
+    const horizontal = orientation === "horizontal";
+    const aF0 = horizontal ? n.cx - n.shapeWidth / 2 : n.cy - n.shapeHeight / 2;
+    const aF1 = horizontal ? n.cx + n.shapeWidth / 2 : n.cy + n.shapeHeight / 2;
+    const aL = horizontal ? n.cy : n.cx;
     nodes.set(n.id, {
       id: n.id,
       layer: layerOfX.get(Math.round(c.x ?? 0)) ?? 0,
@@ -108,6 +116,9 @@ export async function layoutGraph(
       f1: 0,
       l0: 0,
       l1: 0,
+      aF0,
+      aF1,
+      aL,
       row: 0,
       rowBottom: 0,
       rowGutter: 0,
@@ -200,21 +211,23 @@ export async function layoutGraph(
     const s = nodes.get(e.from);
     const t = nodes.get(e.to);
     if (!s || !t) continue;
-    const sc = (s.l0 + s.l1) / 2;
-    const tc = (t.l0 + t.l1) / 2;
+    const sc = s.l0 + s.aL;
+    const tc = t.l0 + t.aL;
+    const sf1 = s.f0 + s.aF1;
+    const tf0 = t.f0 + t.aF0;
     const skip = new Set([s.id, t.id]);
     const plan: EdgePlan = { e, s, t, sc, tc, kind: "back", rail: 0, needA: true, needB: true };
     if (t.layer > s.layer) {
       const colEndS = colStart(s.layer) + NODE_F;
       const colStartT = colStart(t.layer);
-      if (Math.abs(sc - tc) < 0.5 && clearRun(s.f1, t.f0, sc, skip)) {
+      if (Math.abs(sc - tc) < 0.5 && clearRun(sf1, tf0, sc, skip)) {
         plan.kind = "straight";
         plan.needA = false;
         plan.needB = false;
-      } else if (clearRun(colEndS, t.f0, tc, skip)) {
+      } else if (clearRun(colEndS, tf0, tc, skip)) {
         plan.kind = "targetLine";
         plan.needB = false;
-      } else if (clearRun(s.f1, colStartT, sc, skip)) {
+      } else if (clearRun(sf1, colStartT, sc, skip)) {
         plan.kind = "sourceLine";
         plan.needA = false;
       } else {
@@ -268,7 +281,7 @@ export async function layoutGraph(
     let along = 6;
     for (const p of horizontal) {
       const w = labelWidth(p.e.label!);
-      labelFL.set(p.e.id, { f: p.s.f1 + along + w / 2, l: p.sc - LABEL_H / 2 - 3 });
+      labelFL.set(p.e.id, { f: p.s.f0 + p.s.aF1 + along + w / 2, l: p.sc - LABEL_H / 2 - 3 });
       along += w + 8;
     }
     // Channel-side pills stack away from the source line. The step is the pill's
@@ -278,7 +291,7 @@ export async function layoutGraph(
     const stacks = { up: horizontal.length ? LABEL_H + 6 : 0, down: 0 };
     for (const p of vertical) {
       const w = labelWidth(p.e.label!);
-      const fa = channelF.get(`${p.e.id}:a`) ?? p.s.f1 + 12;
+      const fa = channelF.get(`${p.e.id}:a`) ?? p.s.f0 + p.s.aF1 + 12;
       const goal = p.kind === "targetLine" ? p.tc : p.rail;
       const dir = goal >= p.sc ? "down" : "up";
       const ext = extentAlongL(w);
@@ -293,27 +306,29 @@ export async function layoutGraph(
   const edges: RoutedEdge[] = [];
   for (const p of plans) {
     const { e, s, t, sc, tc } = p;
-    const fa = channelF.get(`${e.id}:a`) ?? s.f1;
-    const fb = channelF.get(`${e.id}:b`) ?? t.f0;
+    const sf1 = s.f0 + s.aF1;
+    const tf0 = t.f0 + t.aF0;
+    const fa = channelF.get(`${e.id}:a`) ?? sf1;
+    const fb = channelF.get(`${e.id}:b`) ?? tf0;
     const pts: Point[] = [];
     switch (p.kind) {
       case "straight":
-        pts.push(toXY(s.f1, sc), toXY(t.f0, tc));
+        pts.push(toXY(sf1, sc), toXY(tf0, tc));
         break;
       case "targetLine":
-        pts.push(toXY(s.f1, sc), toXY(fa, sc), toXY(fa, tc), toXY(t.f0, tc));
+        pts.push(toXY(sf1, sc), toXY(fa, sc), toXY(fa, tc), toXY(tf0, tc));
         break;
       case "sourceLine":
-        pts.push(toXY(s.f1, sc), toXY(fb, sc), toXY(fb, tc), toXY(t.f0, tc));
+        pts.push(toXY(sf1, sc), toXY(fb, sc), toXY(fb, tc), toXY(tf0, tc));
         break;
       default:
         pts.push(
-          toXY(s.f1, sc),
+          toXY(sf1, sc),
           toXY(fa, sc),
           toXY(fa, p.rail),
           toXY(fb, p.rail),
           toXY(fb, tc),
-          toXY(t.f0, tc),
+          toXY(tf0, tc),
         );
     }
     const routed: RoutedEdge = { id: e.id, points: dedupe(pts) };

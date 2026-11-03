@@ -1,8 +1,7 @@
 import type { Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
-import type { LayoutNodeKind, Orientation, PositionedNode } from "../../graph/layout-types";
+import type { LayoutNode, Orientation, PositionedNode } from "../../graph/layout-types";
 import type { ResolvedColour } from "../../design/palette";
-import { wrapText } from "./text";
 
 export interface NodeColours {
   owner: ResolvedColour;
@@ -11,7 +10,7 @@ export interface NodeColours {
 
 interface Props {
   node: PositionedNode;
-  kind: LayoutNodeKind;
+  layoutNode: LayoutNode;
   step: Step | undefined;
   colours: NodeColours;
   mode: "simple" | "bpmn";
@@ -21,9 +20,11 @@ interface Props {
   onSelect: (stepId: string) => void;
 }
 
+const LINE_H = 14;
+
 export function MapNode({
   node,
-  kind,
+  layoutNode,
   step,
   colours,
   mode,
@@ -32,7 +33,12 @@ export function MapNode({
   flags,
   onSelect,
 }: Props) {
-  const { x, y, width, height } = node;
+  const { kind, text } = layoutNode;
+  // The shape sits inside the node box at (cx, cy); outside labels use the rest.
+  const width = layoutNode.shapeWidth;
+  const height = layoutNode.shapeHeight;
+  const x = node.x + layoutNode.cx - width / 2;
+  const y = node.y + layoutNode.cy - height / 2;
   const cx = x + width / 2;
   const cy = y + height / 2;
   const stroke = selected ? "var(--color-accent)" : colours.owner.fill;
@@ -141,13 +147,16 @@ export function MapNode({
   }
 
   const isTask = kind === "task";
-  const nameLines = step ? wrapText(step.name || "Untitled", isTask ? 22 : 12, isTask ? 2 : 2) : [];
-  const showTech = isTask && step?.technology;
-  const nameY = isTask ? (showTech ? cy - 8 : cy) : cy;
-  const labelOutside = kind === "start" || kind === "end" || kind === "decision";
-  // Outside labels go below the shape when flow runs left-to-right, and to the
-  // right of it when flow runs top-to-bottom, so they never sit on the exit arrow.
-  const labelRight = labelOutside && orientation === "vertical";
+  const nameLines = text.nameLines;
+  const showTech = isTask && text.tech;
+  const hasDots = isTask && (colours.contributors.length > 0 || !!step?.isSubProcess);
+  // Inside text block: name lines, optional tech line, optional dot row; centred vertically.
+  const blockH = nameLines.length * LINE_H + (showTech ? LINE_H : 0);
+  const blockTop = cy - blockH / 2 - (hasDots ? 4 : 0);
+  const outside = text.outside;
+  const labelRight = outside && orientation === "vertical";
+  const labelX = labelRight ? x + width + 4 : cx;
+  const labelTop = labelRight ? cy - text.labelHeight / 2 : y + height + 4;
 
   return (
     <g
@@ -171,23 +180,19 @@ export function MapNode({
     >
       <title>{title}</title>
       {shape}
-      {step && (
+      {step && nameLines.length > 0 && (
         <text
-          x={labelRight ? x + width + 6 : cx}
-          y={labelRight ? cy : labelOutside ? y + height + 12 : nameY}
+          x={outside ? labelX : cx}
+          y={outside ? labelTop + LINE_H / 2 : blockTop + LINE_H / 2}
           textAnchor={labelRight ? "start" : "middle"}
           dominantBaseline="central"
-          fontSize={labelOutside ? 11 : 12}
+          fontSize={outside ? 11 : 12}
           fontWeight={500}
           fill="var(--text)"
           style={{ pointerEvents: "none" }}
         >
           {nameLines.map((line, i) => (
-            <tspan
-              key={i}
-              x={labelRight ? x + width + 6 : cx}
-              dy={i === 0 ? (nameLines.length > 1 && (!labelOutside || labelRight) ? -7 : 0) : 14}
-            >
+            <tspan key={i} x={outside ? labelX : cx} dy={i === 0 ? 0 : LINE_H}>
               {line}
             </tspan>
           ))}
@@ -196,19 +201,19 @@ export function MapNode({
       {showTech && (
         <text
           x={cx}
-          y={cy + (nameLines.length > 1 ? 16 : 10)}
+          y={blockTop + nameLines.length * LINE_H + LINE_H / 2}
           textAnchor="middle"
           dominantBaseline="central"
           fontSize={10}
           fill="var(--text-muted)"
           style={{ pointerEvents: "none" }}
         >
-          {wrapText(step!.technology, 26, 1)[0]}
+          {text.tech}
         </text>
       )}
       {isTask && step?.isSubProcess && (
         <g
-          transform={`translate(${cx - 6}, ${y + height - 14})`}
+          transform={`translate(${cx - 6}, ${y + height - 16})`}
           stroke={colours.owner.fill}
           fill="none"
           strokeWidth={1.2}
@@ -223,7 +228,7 @@ export function MapNode({
           <circle
             key={c.id}
             cx={x + 12 + i * 12}
-            cy={y + height - 8}
+            cy={y + height - 10}
             r={4}
             fill={c.colour.fill}
             stroke="var(--surface)"
@@ -234,8 +239,8 @@ export function MapNode({
         ))}
       {sev && (
         <circle
-          cx={x + width - (labelOutside ? 2 : 4)}
-          cy={y + (labelOutside ? 2 : 4)}
+          cx={x + width - (outside ? 2 : 4)}
+          cy={y + (outside ? 2 : 4)}
           r={5}
           fill={sev === "error" ? "var(--color-danger)" : "var(--color-warn)"}
           stroke="var(--surface)"

@@ -54,12 +54,24 @@ export default function App() {
     [process, parties],
   );
   const flagMap = useMemo(() => flagsByStep(flags), [flags]);
+  // Node sizes come from measured text, so rebuild the graph once the UI font has loaded.
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) setFontsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const graph = useMemo(
     () =>
       process
-        ? buildLayoutGraph(process, parties, view.shapeMode)
+        ? buildLayoutGraph(process, parties, view.shapeMode, view.orientation)
         : { laneOrder: [], nodes: [], edges: [] },
-    [process, parties, view.shapeMode],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [process, parties, view.shapeMode, view.orientation, fontsReady],
   );
   const { layout, updating } = useLayout(graph, view.orientation);
 
