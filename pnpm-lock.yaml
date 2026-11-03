@@ -20,6 +20,9 @@ importers:
       idb:
         specifier: ^8.0.4
         version: 8.0.4
+      immer:
+        specifier: ^11.2.9
+        version: 11.2.9
       jspdf:
         specifier: ^4.2.1
         version: 4.2.1
@@ -40,10 +43,10 @@ importers:
         version: 4.6.7
       zundo:
         specifier: ^2.3.0
-        version: 2.3.0(zustand@5.0.16(@types/react@18.3.31)(react@18.3.1))
+        version: 2.3.0(zustand@5.0.16(@types/react@18.3.31)(immer@11.2.9)(react@18.3.1))
       zustand:
         specifier: ^5.0.16
-        version: 5.0.16(@types/react@18.3.31)(react@18.3.1)
+        version: 5.0.16(@types/react@18.3.31)(immer@11.2.9)(react@18.3.1)
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -1096,6 +1099,9 @@ packages:
   ignore@7.0.14:
     resolution: {integrity: sha512-wCBiZ77u1tuWde6G/nfOtLaCTYcFDU5yCzARzK10y+rLhzYoL7a7yEemcopcc2Mzow7gZOIjnV2ym1NYmdiJOQ==}
     engines: {node: '>= 4'}
+
+  immer@11.2.9:
+    resolution: {integrity: sha512-IQ4UEtXjZjyefyWjtLEDXUSrF6T2hwjKPi6BIJl3bY/2XXW24d6cNGdXJSBOA/+KNnuiXkZY6DR0C3efolhitA==}
 
   imurmurhash@0.1.4:
     resolution: {integrity: sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==}
@@ -2569,6 +2575,8 @@ snapshots:
 
   ignore@7.0.14: {}
 
+  immer@11.2.9: {}
+
   imurmurhash@0.1.4: {}
 
   iobuffer@5.4.0: {}
@@ -3015,11 +3023,12 @@ snapshots:
 
   zod@4.6.7: {}
 
-  zundo@2.3.0(zustand@5.0.16(@types/react@18.3.31)(react@18.3.1)):
+  zundo@2.3.0(zustand@5.0.16(@types/react@18.3.31)(immer@11.2.9)(react@18.3.1)):
     dependencies:
-      zustand: 5.0.16(@types/react@18.3.31)(react@18.3.1)
+      zustand: 5.0.16(@types/react@18.3.31)(immer@11.2.9)(react@18.3.1)
 
-  zustand@5.0.16(@types/react@18.3.31)(react@18.3.1):
+  zustand@5.0.16(@types/react@18.3.31)(immer@11.2.9)(react@18.3.1):
     optionalDependencies:
       '@types/react': 18.3.31
+      immer: 11.2.9
       react: 18.3.1
