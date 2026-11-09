@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
-import type { NextLink, Step } from "../../model/types";
+import type { NextLink, Step, Team } from "../../model/types";
+import { teamNames } from "../../model/team";
 import { Popover } from "../ui/Popover";
 
 interface Props {
   step: Step;
   steps: Step[];
+  /** Registry for scoping a link to some teams only; empty hides the controls. */
+  teams: Team[];
   onChange: (next: NextLink[]) => void;
   onCreateStep: () => void;
   brokenTargets: Set<string>;
@@ -12,8 +15,10 @@ interface Props {
 
 type Item = { kind: "step"; step: Step } | { kind: "create" };
 
-export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets }: Props) {
+export function NextPicker({ step, steps, teams, onChange, onCreateStep, brokenTargets }: Props) {
   const [open, setOpenRaw] = useState(false);
+  /** The link whose team checkboxes are expanded. */
+  const [teamsFor, setTeamsFor] = useState<string | null>(null);
   const [query, setQueryRaw] = useState("");
   const [activeOverride, setActiveOverride] = useState<number | null>(null);
   const [button, setButton] = useState<HTMLButtonElement | null>(null);
@@ -29,6 +34,7 @@ export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets 
     if (!o) {
       setQueryRaw("");
       setActiveOverride(null);
+      setTeamsFor(null);
     }
   };
   const disabled = step.type === "end";
@@ -61,6 +67,18 @@ export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets 
           : { ...l, isDefault: undefined },
       ),
     );
+  const setLinkTeams = (id: string, teamIds: string[]) =>
+    onChange(
+      step.next.map((l) =>
+        l.targetId === id ? { ...l, teamIds: teamIds.length ? teamIds : undefined } : l,
+      ),
+    );
+  const scopeLabel = (l: NextLink) => {
+    const names = teamNames(l.teamIds, teams);
+    return names.length ? names.join(", ") : "All teams";
+  };
+  /** Per-link settings show for decisions (labels) and whenever teams exist (scopes). */
+  const showLinkRows = step.next.length > 0 && (isDecision || teams.length > 0);
   const pick = (item: Item | undefined) => {
     if (!item) return;
     if (item.kind === "create") {
@@ -145,6 +163,14 @@ export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets 
                 {link.label || "label?"}
               </span>
             )}
+            {!broken && !!link.teamIds?.length && (
+              <span
+                className="max-w-[90px] shrink-0 truncate text-[var(--text-muted)]"
+                title={`Only for: ${scopeLabel(link)}`}
+              >
+                {scopeLabel(link)}
+              </span>
+            )}
             {broken && (
               <span
                 role="button"
@@ -173,45 +199,101 @@ export function NextPicker({ step, steps, onChange, onCreateStep, brokenTargets 
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onSearchKey}
           />
-          {isDecision && step.next.length > 0 && (
+          {showLinkRows && (
             <div
               className="flex flex-col gap-1 border-b pb-1"
               style={{ borderColor: "var(--border)" }}
             >
               <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-                Outcomes
+                {isDecision ? "Outcomes" : "Links"}
               </div>
               {step.next.map((l) => {
                 const t = byId.get(l.targetId);
+                const expanded = teamsFor === l.targetId;
                 return (
-                  <div key={l.targetId} className="flex items-center gap-1 px-1">
-                    <span className="w-16 shrink-0 truncate text-xs">
-                      {t ? `${t.displayNo}: ${t.name || "Untitled"}` : "missing"}
-                    </span>
-                    <input
-                      className="input h-6 flex-1 text-xs"
-                      placeholder="Label"
-                      aria-label={`Label for outcome to step ${t?.displayNo ?? "?"}`}
-                      value={l.label ?? ""}
-                      onChange={(e) => setLabel(l.targetId, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setOpen(false);
-                          button?.focus();
-                        }
-                      }}
-                    />
-                    <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={!!l.isDefault}
-                        onChange={(e) => setDefault(l.targetId, e.target.checked)}
-                        aria-label="Default outcome"
-                      />
-                      default
-                    </label>
+                  <div key={l.targetId} className="flex flex-col gap-1 px-1">
+                    <div className="flex items-center gap-1">
+                      <span className="w-16 shrink-0 truncate text-xs">
+                        {t ? `${t.displayNo}: ${t.name || "Untitled"}` : "missing"}
+                      </span>
+                      {isDecision && (
+                        <input
+                          className="input h-6 flex-1 text-xs"
+                          placeholder="Label"
+                          aria-label={`Label for outcome to step ${t?.displayNo ?? "?"}`}
+                          value={l.label ?? ""}
+                          onChange={(e) => setLabel(l.targetId, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setOpen(false);
+                              button?.focus();
+                            }
+                          }}
+                        />
+                      )}
+                      {isDecision && (
+                        <label className="flex items-center gap-1 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={!!l.isDefault}
+                            onChange={(e) => setDefault(l.targetId, e.target.checked)}
+                            aria-label="Default outcome"
+                          />
+                          default
+                        </label>
+                      )}
+                      {teams.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn h-6 max-w-[120px] shrink-0 px-2 text-xs"
+                          aria-expanded={expanded}
+                          aria-label={`Teams for link to step ${t?.displayNo ?? "?"}`}
+                          title="Which teams this link applies to"
+                          onClick={() => setTeamsFor(expanded ? null : l.targetId)}
+                        >
+                          <span className="truncate">{scopeLabel(l)}</span>
+                        </button>
+                      )}
+                    </div>
+                    {expanded && (
+                      <div
+                        className="grid grid-cols-2 gap-x-2 gap-y-0.5 rounded-md border p-1.5 text-xs"
+                        style={{ borderColor: "var(--border)" }}
+                        role="group"
+                        aria-label={`Team choices for link to step ${t?.displayNo ?? "?"}`}
+                      >
+                        <label className="col-span-2 flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={!l.teamIds?.length}
+                            onChange={() => setLinkTeams(l.targetId, [])}
+                          />
+                          All teams
+                        </label>
+                        {teams.map((team) => {
+                          const on = !!l.teamIds?.includes(team.id);
+                          return (
+                            <label key={team.id} className="flex min-w-0 items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={(e) =>
+                                  setLinkTeams(
+                                    l.targetId,
+                                    e.target.checked
+                                      ? [...(l.teamIds ?? []), team.id]
+                                      : (l.teamIds ?? []).filter((id) => id !== team.id),
+                                  )
+                                }
+                              />
+                              <span className="truncate">{team.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}

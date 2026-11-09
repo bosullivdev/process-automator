@@ -6,8 +6,16 @@ export interface Workspace {
   schemaVersion: 1;
   meta: { name: string; createdAt: string; updatedAt: string };
   parties: Party[];
+  /** Variants of a process: steps and links can be scoped to some teams only. */
+  teams: Team[];
   processes: Process[];
   view: ViewSettings;
+}
+
+/** A team that runs its own variant of the processes. Teams are not lanes. */
+export interface Team {
+  id: string;
+  name: string;
 }
 
 export interface Party {
@@ -37,6 +45,7 @@ export interface Step {
   technology: string;
   contributorIds: string[]; // party IDs
   notes: string;
+  teamIds: string[]; // team IDs this step applies to; empty = every team
   isSubProcess?: boolean; // visual marker only
   startKind?: StartKind; // start only
   endKind?: EndKind; // end only
@@ -46,6 +55,7 @@ export interface NextLink {
   targetId: string; // step ID in the same process
   label?: string; // required on decision, ignored otherwise
   isDefault?: boolean; // decision only, at most one true per step
+  teamIds?: string[]; // team IDs this link applies to; empty or absent = every team
 }
 
 export interface ViewSettings {
@@ -56,4 +66,8 @@ export interface ViewSettings {
   activeProcessId: string | null;
   /** "full" shows technology and contributors on the map; "minimal" hides them. */
   annotations: "full" | "minimal";
+  /** The team whose variant is emphasised, or null for the whole process. */
+  highlightTeamId: string | null;
+  /** "highlight" fades everything outside the team; "isolate" shows the team's variant alone. */
+  teamFocus: "highlight" | "isolate";
 }

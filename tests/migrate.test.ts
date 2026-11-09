@@ -46,6 +46,36 @@ describe("migrate", () => {
   });
 });
 
+describe("team defaults", () => {
+  it("loads a file saved before teams existed", () => {
+    const p = party("Ops");
+    const ws = workspace([p], [linearProcess(p.id)]);
+    const legacy = JSON.parse(JSON.stringify(ws)) as Record<string, unknown>;
+    delete legacy.teams;
+    const view = legacy.view as Record<string, unknown>;
+    delete view.highlightTeamId;
+    delete view.teamFocus;
+    for (const proc of legacy.processes as Array<{ steps: Array<Record<string, unknown>> }>) {
+      for (const s of proc.steps) delete s.teamIds;
+    }
+    const out = migrate(legacy);
+    expect(out.teams).toEqual([]);
+    expect(out.view.highlightTeamId).toBeNull();
+    expect(out.view.teamFocus).toBe("highlight");
+    expect(out.processes[0].steps.every((s) => s.teamIds.length === 0)).toBe(true);
+  });
+
+  it("keeps teams and scopes through a round trip", () => {
+    const p = party("Ops");
+    const proc = linearProcess(p.id);
+    proc.steps[1].teamIds = ["t1"];
+    proc.steps[1].next[0].teamIds = ["t1"];
+    const ws = { ...workspace([p], [proc]), teams: [{ id: "t1", name: "North" }] };
+    const exported = JSON.stringify(ws, null, 2);
+    expect(JSON.stringify(migrate(JSON.parse(exported)), null, 2)).toBe(exported);
+  });
+});
+
 describe("annotations default", () => {
   it("loads a file saved before the annotations setting existed", () => {
     const ws = workspace([], []);

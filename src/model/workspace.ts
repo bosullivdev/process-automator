@@ -15,6 +15,7 @@ export function createStep(partial: Partial<Step> & { displayNo: number }): Step
     technology: "",
     contributorIds: [],
     notes: "",
+    teamIds: [],
     ...partial,
   };
 }
@@ -34,6 +35,7 @@ export function createEmptyWorkspace(name = "Untitled workspace"): Workspace {
     schemaVersion: 1,
     meta: { name, createdAt: ts, updatedAt: ts },
     parties: [],
+    teams: [],
     processes: [process],
     view: {
       orientation: "horizontal",
@@ -42,6 +44,8 @@ export function createEmptyWorkspace(name = "Untitled workspace"): Workspace {
       splitRatio: 0.5,
       activeProcessId: process.id,
       annotations: "full",
+      highlightTeamId: null,
+      teamFocus: "highlight",
     },
   };
 }
@@ -49,6 +53,7 @@ export function createEmptyWorkspace(name = "Untitled workspace"): Workspace {
 export function isWorkspaceEmpty(ws: Workspace): boolean {
   return (
     ws.parties.length === 0 &&
+    ws.teams.length === 0 &&
     ws.processes.every((p) => p.steps.length === 0) &&
     ws.processes.length <= 1
   );
@@ -68,6 +73,7 @@ export function duplicateProcess(process: Process, name: string): Process {
       id: idMap.get(s.id)!,
       next: s.next.map((l) => ({ ...l, targetId: idMap.get(l.targetId) ?? l.targetId })),
       contributorIds: [...s.contributorIds],
+      teamIds: [...s.teamIds],
     })),
   };
 }

@@ -5,6 +5,7 @@ const nextLinkSchema = z.object({
   targetId: z.string(),
   label: z.string().optional(),
   isDefault: z.boolean().optional(),
+  teamIds: z.array(z.string()).optional(),
 });
 
 const stepSchema = z.object({
@@ -17,6 +18,8 @@ const stepSchema = z.object({
   technology: z.string(),
   contributorIds: z.array(z.string()),
   notes: z.string(),
+  // Added with team variants; older files load with every step applying to all teams.
+  teamIds: z.array(z.string()).default([]),
   isSubProcess: z.boolean().optional(),
   startKind: z.enum(["none", "message", "timer"]).optional(),
   endKind: z.enum(["normal", "terminate"]).optional(),
@@ -30,6 +33,11 @@ const partySchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "colourOverride must be a 6-digit hex colour")
     .optional(),
+});
+
+const teamSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
 });
 
 const processSchema = z.object({
@@ -50,6 +58,8 @@ const viewSchema = z.object({
   activeProcessId: z.string().nullable(),
   // Added after the first release; older files load with the default.
   annotations: z.enum(["full", "minimal"]).default("full"),
+  highlightTeamId: z.string().nullable().default(null),
+  teamFocus: z.enum(["highlight", "isolate"]).default("highlight"),
 });
 
 export const workspaceV1Schema = z.object({
@@ -60,6 +70,8 @@ export const workspaceV1Schema = z.object({
     updatedAt: z.string(),
   }),
   parties: z.array(partySchema),
+  // Added with team variants; older files load with no teams.
+  teams: z.array(teamSchema).default([]),
   processes: z.array(processSchema),
   view: viewSchema,
 });

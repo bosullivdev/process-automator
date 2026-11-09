@@ -22,6 +22,7 @@ export function step(partial: Partial<Step> & { displayNo: number; id: string })
     technology: "",
     contributorIds: [],
     notes: "",
+    teamIds: [],
     ...rest,
   };
 }
@@ -39,6 +40,7 @@ export function workspace(parties: Party[], processes: Process[]): Workspace {
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
     parties,
+    teams: [],
     processes,
     view: {
       orientation: "horizontal",
@@ -47,6 +49,8 @@ export function workspace(parties: Party[], processes: Process[]): Workspace {
       splitRatio: 0.5,
       activeProcessId: processes[0]?.id ?? null,
       annotations: "full",
+      highlightTeamId: null,
+      teamFocus: "highlight",
     },
   };
 }

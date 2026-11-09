@@ -34,20 +34,23 @@ export function levenshtein(a: string, b: string): number {
   return prev[b.length];
 }
 
-export type PartyMatch =
-  { kind: "exact"; party: Party } | { kind: "near"; party: Party } | { kind: "new" };
+export type PartyMatch<T = Party> =
+  { kind: "exact"; party: T } | { kind: "near"; party: T } | { kind: "new" };
 
 /**
  * Exact match (case-insensitive, trimmed) links the existing party. A near
  * match (Levenshtein distance 2 or less, or one is a prefix of the other)
  * is offered. Otherwise the caller should create a new party.
  */
-export function matchParty(input: string, parties: readonly Party[]): PartyMatch {
+export function matchParty<T extends { name: string }>(
+  input: string,
+  parties: readonly T[],
+): PartyMatch<T> {
   const q = normaliseName(input);
   if (!q) return { kind: "new" };
   const exact = parties.find((p) => normaliseName(p.name) === q);
   if (exact) return { kind: "exact", party: exact };
-  let best: { party: Party; score: number } | null = null;
+  let best: { party: T; score: number } | null = null;
   for (const p of parties) {
     const n = normaliseName(p.name);
     if (!n) continue;

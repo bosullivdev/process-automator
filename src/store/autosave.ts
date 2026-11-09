@@ -61,6 +61,7 @@ export async function startAutosave(): Promise<() => void> {
     if (
       state.meta === prev.meta &&
       state.parties === prev.parties &&
+      state.teams === prev.teams &&
       state.processes === prev.processes &&
       state.view === prev.view
     ) {

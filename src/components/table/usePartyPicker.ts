@@ -2,38 +2,44 @@ import { useMemo } from "react";
 import type { Party } from "../../model/types";
 import { matchParty, normaliseName } from "../../model/party";
 
-/** One team name typed into a multi-owner entry and the party it resolves to (null = create). */
-export interface OwnerPart {
+/** Anything the picker can offer: parties for owners and contributors, teams for scopes. */
+export interface Named {
+  id: string;
   name: string;
-  party: Party | null;
 }
 
-export type PickerItem =
-  | { kind: "party"; party: Party; near?: boolean }
+/** One team name typed into a multi-owner entry and the party it resolves to (null = create). */
+export interface OwnerPart<T extends Named = Party> {
+  name: string;
+  party: T | null;
+}
+
+export type PickerItem<T extends Named = Party> =
+  | { kind: "party"; party: T; near?: boolean }
   | { kind: "create"; name: string }
   | { kind: "clear" }
   /** Owner only: copy this step into another party's lane as well. */
-  | { kind: "share"; party: Party }
+  | { kind: "share"; party: T }
   /** Owner only: several teams typed at once; the first owns, the rest get copies. */
-  | { kind: "multi"; parts: OwnerPart[] };
+  | { kind: "multi"; parts: OwnerPart<T>[] };
 
 /**
- * Builds the dropdown list for an owner/contributor combobox from the typed
- * query, and chooses the default highlight: exact match > "Use X?" near match
- * > create new. Parties already excluded (e.g. chosen contributors) are hidden.
+ * Builds the dropdown list for a combobox from the typed query, and chooses
+ * the default highlight: exact match > "Use X?" near match > create new.
+ * Items already excluded (e.g. chosen contributors) are hidden.
  */
-export function usePartyPicker(
+export function usePartyPicker<T extends Named>(
   query: string,
-  parties: readonly Party[],
+  parties: readonly T[],
   opts: { allowClear: boolean; exclude?: readonly string[] },
-): { items: PickerItem[]; defaultIndex: number } {
+): { items: PickerItem<T>[]; defaultIndex: number } {
   return useMemo(() => {
     const q = normaliseName(query);
     const exclude = new Set(opts.exclude ?? []);
     const visible = parties.filter((p) => !exclude.has(p.id));
     const filtered = q ? visible.filter((p) => normaliseName(p.name).includes(q)) : visible;
     const match = matchParty(query, visible);
-    const items: PickerItem[] = [];
+    const items: PickerItem<T>[] = [];
     let defaultIndex: number;
 
     if (match.kind === "near" && !filtered.some((p) => p.id === match.party.id)) {

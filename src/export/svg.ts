@@ -12,6 +12,8 @@ export interface ExportContext {
   theme: "light" | "dark";
   /** The live map <svg> element; its content group is cloned. */
   svgEl: SVGSVGElement;
+  /** Extra title-block line when one team's variant is shown, e.g. "Team: North (highlighted)". */
+  teamLine?: string;
 }
 
 const PAD = 32;
@@ -92,7 +94,7 @@ function esc(s: string): string {
 
 /** Build a standalone SVG document string for the active process map. */
 export async function buildExportSvg(ctx: ExportContext): Promise<string> {
-  const { process, parties, layout, theme, svgEl } = ctx;
+  const { process, parties, layout, theme, svgEl, teamLine } = ctx;
   const vars = cssVars(theme);
   const fonts = await loadAllFonts();
 
@@ -135,6 +137,7 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
     process.owner && `Owner: ${process.owner}`,
     process.version && `Version: ${process.version}`,
     process.date && `Date: ${process.date}`,
+    teamLine,
   ]
     .filter(Boolean)
     .join("   ·   ");

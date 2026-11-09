@@ -1,5 +1,6 @@
 import type { Process, Workspace } from "./types";
 import { buildAdjacency, canReachEnd, reachableFromStarts } from "../graph/analysis";
+import { scopesOverlap } from "./team";
 
 export type Severity = "error" | "warning";
 
@@ -12,6 +13,7 @@ export type FlagCode =
   | "decision-duplicate-label"
   | "decision-multiple-default"
   | "unknown-party"
+  | "unknown-team"
   | "incomplete"
   | "decision-too-few"
   | "decision-many"
@@ -32,9 +34,17 @@ export interface Flag {
   message: string;
 }
 
-export function validateProcess(process: Process, ws: Pick<Workspace, "parties">): Flag[] {
+/**
+ * Flags for one process. Team checks run only when the registry is given, so
+ * callers that have no teams can pass just the parties.
+ */
+export function validateProcess(
+  process: Process,
+  ws: Pick<Workspace, "parties"> & Partial<Pick<Workspace, "teams">>,
+): Flag[] {
   const flags: Flag[] = [];
   const partyIds = new Set(ws.parties.map((p) => p.id));
+  const teamIds = ws.teams ? new Set(ws.teams.map((t) => t.id)) : null;
   const adj = buildAdjacency(process);
   const label = (id: string) => {
     const s = adj.byId.get(id);
@@ -89,13 +99,15 @@ export function validateProcess(process: Process, ws: Pick<Workspace, "parties">
     }
 
     if (s.type === "decision") {
-      const seen = new Map<string, number>();
+      // Two outcomes may share a label when they are scoped to different teams,
+      // since no single team then sees both.
+      const seen = new Map<string, typeof s.next>();
       let defaults = 0;
       let missing = 0;
       for (const l of s.next) {
         const t = (l.label ?? "").trim().toLowerCase();
         if (!t) missing++;
-        else seen.set(t, (seen.get(t) ?? 0) + 1);
+        else seen.set(t, [...(seen.get(t) ?? []), l]);
         if (l.isDefault) defaults++;
       }
       if (missing > 0) {
@@ -106,7 +118,11 @@ export function validateProcess(process: Process, ws: Pick<Workspace, "parties">
           message: `Decision ${label(s.id)} has ${missing} outcome${missing > 1 ? "s" : ""} without a label.`,
         });
       }
-      const dupes = [...seen.entries()].filter(([, n]) => n > 1).map(([t]) => t);
+      const dupes = [...seen.entries()]
+        .filter(([, links]) =>
+          links.some((a, i) => links.slice(i + 1).some((b) => scopesOverlap(a.teamIds, b.teamIds))),
+        )
+        .map(([t]) => t);
       if (dupes.length) {
         flags.push({
           severity: "error",
@@ -161,6 +177,20 @@ export function validateProcess(process: Process, ws: Pick<Workspace, "parties">
           stepId: s.id,
           partyId: c,
           message: `Step ${label(s.id)} lists a contributor that is not in the registry.`,
+        });
+      }
+    }
+    // Teams
+    if (teamIds) {
+      const unknown = [...s.teamIds, ...s.next.flatMap((l) => l.teamIds ?? [])].filter(
+        (id) => !teamIds.has(id),
+      );
+      if (unknown.length) {
+        flags.push({
+          severity: "error",
+          code: "unknown-team",
+          stepId: s.id,
+          message: `Step ${label(s.id)} is scoped to a team that is not in the registry.`,
         });
       }
     }

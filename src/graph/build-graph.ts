@@ -1,4 +1,5 @@
-import type { Party, Process, Step } from "../model/types";
+import type { Party, Process, Step, Team } from "../model/types";
+import { teamNames } from "../model/team";
 import { buildAdjacency, canReachEnd } from "./analysis";
 import {
   NODE_SIZE,
@@ -20,6 +21,8 @@ export const TECH_ROW = 20;
 export const BADGE_ROW = 24;
 export const BADGE_SIZE = 18;
 export const BADGE_GAP = 4;
+/** Team scope pill row, under the badges. */
+export const TEAM_ROW = 18;
 export type Annotations = "full" | "minimal";
 const OUTSIDE_SIZE = 11;
 const LINE_H = 14;
@@ -48,6 +51,7 @@ function sizeGateway(kind: "fork" | "join"): Sized {
       nameLines: [],
       techWidth: 0,
       badges: 0,
+      teamsWidth: 0,
       outside: false,
       labelWidth: 0,
       labelHeight: 0,
@@ -59,17 +63,18 @@ function sizeGateway(kind: "fork" | "join"): Sized {
 /**
  * Size a step's node to its content. A task keeps its name inside a fixed-width
  * box that grows in height; start, end and decision shapes keep their size and
- * carry the name outside. Every kind carries its technology pill and
- * contributor badges outside the shape, in one annotation block together with
- * an outside name: below the shape when flow runs left-to-right, to the right
- * of it when flow runs top-to-bottom. The box includes that block so rows
- * reserve room for it; edges attach to the shape via (cx, cy).
+ * carry the name outside. Every kind carries its technology pill,
+ * contributor badges and team scope outside the shape, in one annotation block
+ * together with an outside name: below the shape when flow runs left-to-right,
+ * to the right of it when flow runs top-to-bottom. The box includes that block
+ * so rows reserve room for it; edges attach to the shape via (cx, cy).
  */
 export function sizeStep(
   step: Step,
   orientation: Orientation,
   multiExit = false,
   annotations: Annotations = "full",
+  teamLabel = "",
 ): Sized {
   const kind: LayoutNodeKind = step.type;
   const name = step.name.trim() || "Untitled";
@@ -79,6 +84,11 @@ export function sizeStep(
   const techText = full ? step.technology.trim() : "";
   const tech = techText ? wrapToWidth(techText, OUTSIDE_MAX_WIDTH - 16, SUB_SIZE, 1)[0] : undefined;
   const techWidth = tech ? Math.ceil(measureText(tech, SUB_SIZE)) + 16 : 0;
+  const teamsText = full ? teamLabel.trim() : "";
+  const teams = teamsText
+    ? wrapToWidth(teamsText, OUTSIDE_MAX_WIDTH - 16, SUB_SIZE, 1)[0]
+    : undefined;
+  const teamsWidth = teams ? Math.ceil(measureText(teams, SUB_SIZE)) + 16 : 0;
 
   // Shape and inside text.
   let sw: number;
@@ -97,17 +107,20 @@ export function sizeStep(
     nameLines = wrapToWidth(name, OUTSIDE_MAX_WIDTH, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
   }
 
-  // Outside block: name lines (non-task), then the technology pill, then badges.
+  // Outside block: name lines (non-task), then the technology pill, then badges, then teams.
   const nameH = outside ? nameLines.length * LINE_H : 0;
   const nameW = outside ? linesWidth(nameLines, OUTSIDE_SIZE, 500) : 0;
-  const labelHeight =
+  const aboveTeams =
     nameH + (tech ? (nameH ? TECH_GAP : 0) + TECH_ROW : 0) + (badges ? BADGE_ROW : 0);
-  const labelWidth = Math.ceil(Math.max(nameW, techWidth, badgesWidth));
+  const labelHeight = aboveTeams + (teams ? (aboveTeams ? TECH_GAP : 0) + TEAM_ROW : 0);
+  const labelWidth = Math.ceil(Math.max(nameW, techWidth, badgesWidth, teamsWidth));
   const text: NodeText = {
     nameLines,
     tech,
     techWidth,
     badges,
+    teams,
+    teamsWidth,
     outside,
     labelWidth,
     labelHeight,
@@ -166,6 +179,7 @@ export function buildLayoutGraph(
   mode: ShapeMode,
   orientation: Orientation = "horizontal",
   annotations: Annotations = "full",
+  teams: readonly Team[] = [],
 ): LayoutGraph {
   const steps = [...process.steps].sort((a, b) => a.displayNo - b.displayNo);
   const byId = new Map(steps.map((s) => [s.id, s]));
@@ -205,7 +219,13 @@ export function buildLayoutGraph(
       id: s.id,
       kind: s.type,
       laneId: lane,
-      ...sizeStep(s, orientation, validLinks.length >= 2, annotations),
+      ...sizeStep(
+        s,
+        orientation,
+        validLinks.length >= 2,
+        annotations,
+        teamNames(s.teamIds, teams).join(", "),
+      ),
       pinFirst: s.type === "start",
       stepId: s.id,
     });

@@ -48,7 +48,10 @@ export function OwnerCombobox({
   const { items, defaultIndex } = useMemo(() => {
     const parts = splitOwnerQuery(query);
     if (parts.length >= 2) {
-      const multi: PickerItem = { kind: "multi", parts: parts.map((n) => resolvePart(n, parties)) };
+      const multi: PickerItem = {
+        kind: "multi",
+        parts: parts.map((n) => resolvePart(n, parties)),
+      };
       return { items: [multi], defaultIndex: 0 };
     }
     if (!current || parts.length === 0) return base;
@@ -144,7 +147,13 @@ export function OwnerCombobox({
         onKeyDown={onKeyDown}
       />
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)}>
-        <PartyList items={items} active={active} onPick={commit} onHover={setActive} />
+        <PartyList
+          items={items}
+          active={active}
+          onPick={commit}
+          onHover={setActive}
+          swatch={(p, size) => <PartySwatch party={p} size={size} />}
+        />
       </Popover>
     </div>
   );

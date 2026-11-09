@@ -71,6 +71,33 @@ describe("store undo/redo", () => {
     expect(proc.laneOrder).toEqual([sales]);
   });
 
+  it("manages teams and step scopes as undoable edits", () => {
+    const s = useStore.getState();
+    const procId = s.view.activeProcessId!;
+    const north = s.addTeam("North");
+    const a = useStore.getState().addStep(procId, { partial: { name: "Only north" } });
+    useStore.getState().setStepTeams(procId, a, [north, north]);
+    expect(useStore.getState().teams).toEqual([{ id: north, name: "North" }]);
+    expect(useStore.getState().processes[0].steps[0].teamIds).toEqual([north]);
+
+    useStore.getState().renameTeam(north, " North East ");
+    expect(useStore.getState().teams[0].name).toBe("North East");
+
+    // Referenced: delete is a no-op. Unreferenced: deleted, and the highlight is cleared.
+    useStore.getState().deleteTeam(north);
+    expect(useStore.getState().teams).toHaveLength(1);
+    useStore.getState().setStepTeams(procId, a, []);
+    useStore.getState().setView({ highlightTeamId: north });
+    useStore.getState().deleteTeam(north);
+    expect(useStore.getState().teams).toHaveLength(0);
+    expect(useStore.getState().view.highlightTeamId).toBeNull();
+
+    undo();
+    expect(useStore.getState().teams).toHaveLength(1);
+    undo();
+    expect(useStore.getState().processes[0].steps[0].teamIds).toEqual([north]);
+  });
+
   it("deleting the last process creates a fresh one", () => {
     const s = useStore.getState();
     const procId = s.view.activeProcessId!;

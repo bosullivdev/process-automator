@@ -34,9 +34,22 @@ a static site.
   afterwards. A decision leading in gets its outcome repeated as
   "Yes (Legal)" so labels stay unique. Teams in the group are removed from
   the contributors of the shared steps. One undo reverts the whole thing.
+- **Teams**: when several teams run their own variant of the same process,
+  build one master process and tag the differences. The Teams column scopes a
+  step to some teams; a step with no teams applies to every team. In the Next
+  picker each link has a team scope too, so one team can skip a step while
+  another goes through it, and a decision may repeat an outcome label as long
+  as the repeats are scoped to different teams. The header's Team menu then
+  highlights one team (everything the team does not use fades) or shows that
+  team only (the table, map, validation and exports all show the variant alone,
+  and a row added in that view belongs to the team). Steps scoped to a subset
+  of teams carry a small dashed pill naming them on the map. Teams are not
+  lanes: a "Management accountant" lane can hold steps from every team's
+  variant. Manage teams from the Team menu: rename anywhere, delete once no
+  step or link uses the team.
 - **Next**: a searchable multi-select of steps in the same process with a
   "Create new step" entry. Decisions get a label and a default toggle per
-  outcome.
+  outcome, and every link gets a team scope once teams exist.
 - **Map (right)**: pan by dragging, zoom with Ctrl/Cmd + wheel or the buttons.
   Click a node to select its row and vice versa. Drag a lane header (or focus
   it and use the arrow keys) to reorder lanes. Orientation, shape mode
@@ -54,7 +67,9 @@ a static site.
   storage can be cleared, so use Export → Workspace JSON for a real copy and
   Import to load it again.
 - **Export**: the active process map as SVG, PNG (2x) or PDF, with a title
-  block and a legend of every party on the map, owners and contributors alike;
+  block and a legend of every party on the map, owners and contributors alike.
+  With a team highlighted or isolated, the export shows exactly what the map
+  shows, names the team in the title block and in the filename;
   or the active process table as CSV, with party and step names rather than
   ids, for sharing and review (CSV is export-only; import takes JSON). Fonts are embedded so exports render the same
   everywhere.

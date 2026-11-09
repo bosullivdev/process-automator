@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Party, Process } from "../../model/types";
+import type { Party, Process, Team } from "../../model/types";
 import type { Flag } from "../../model/validate";
+import { teamNames as namesOf, type TeamFocus } from "../../model/team";
 import type { LayoutGraph, LayoutResult } from "../../graph/layout-types";
 import { UNASSIGNED_LANE } from "../../graph/layout-types";
 import {
@@ -17,6 +18,9 @@ import { MapEdge } from "./MapEdge";
 interface Props {
   process: Process;
   parties: Party[];
+  teams: Team[];
+  /** Fades everything outside the team in "highlight" mode; "isolate" is applied upstream. */
+  focus: TeamFocus | null;
   graph: LayoutGraph;
   layout: LayoutResult | null;
   updating: boolean;
@@ -31,6 +35,8 @@ interface Props {
 export function MapView({
   process,
   parties,
+  teams,
+  focus,
   graph,
   layout,
   updating,
@@ -149,6 +155,15 @@ export function MapView({
   };
 
   const empty = !layout || layout.nodes.length === 0;
+  const fade = focus?.mode === "highlight" ? focus.view : null;
+  const edgeDimmed = (e: { sourceStepId: string; targetStepId: string }) =>
+    !!fade &&
+    !(
+      fade.stepIds.has(e.sourceStepId) &&
+      fade.stepIds.has(e.targetStepId) &&
+      (e.sourceStepId === e.targetStepId ||
+        fade.linkKeys.has(`${e.sourceStepId}->${e.targetStepId}`))
+    );
 
   return (
     <div
@@ -340,7 +355,14 @@ export function MapView({
               !!selectedStepId &&
               (e.sourceStepId === selectedStepId || e.targetStepId === selectedStepId);
             return (
-              <MapEdge key={route.id} edge={e} route={route} selected={selected} mode={mode} />
+              <MapEdge
+                key={route.id}
+                edge={e}
+                route={route}
+                selected={selected}
+                mode={mode}
+                dimmed={edgeDimmed(e)}
+              />
             );
           })}
           {layout?.nodes.map((n) => {
@@ -369,6 +391,8 @@ export function MapView({
                 mode={mode}
                 selected={!!step && step.id === selectedStepId}
                 flags={step ? flags.get(step.id) : undefined}
+                teamNames={step ? namesOf(step.teamIds, teams) : []}
+                dimmed={!!fade && !fade.stepIds.has(ln.stepId)}
                 onSelect={(id) => {
                   selectionFromMap.current = true;
                   onSelect(id);

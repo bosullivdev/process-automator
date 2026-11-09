@@ -6,9 +6,11 @@ interface Props {
   route: RoutedEdge;
   selected: boolean;
   mode: "simple" | "bpmn";
+  /** Faded because another team's variant is highlighted. */
+  dimmed?: boolean;
 }
 
-export function MapEdge({ edge, route, selected, mode }: Props) {
+export function MapEdge({ edge, route, selected, mode, dimmed = false }: Props) {
   const pts = route.points;
   if (pts.length < 2) return null;
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
@@ -46,7 +48,7 @@ export function MapEdge({ edge, route, selected, mode }: Props) {
   })();
 
   return (
-    <g data-edge-id={edge.id}>
+    <g data-edge-id={edge.id} opacity={dimmed ? 0.15 : undefined} data-dimmed={dimmed || undefined}>
       <path
         d={d}
         fill="none"

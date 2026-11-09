@@ -1,1 +1,1 @@
-{"root":["./vite.config.ts","./vitest.config.ts","./playwright.config.ts","./e2e/flow.spec.ts","./e2e/smoke-export.spec.ts","./e2e/smoke-map.spec.ts","./e2e/smoke-parties-processes.spec.ts","./e2e/smoke-shared.spec.ts","./e2e/smoke-table.spec.ts"],"version":"5.9.3"}
+{"root":["./vite.config.ts","./vitest.config.ts","./playwright.config.ts","./e2e/flow.spec.ts","./e2e/smoke-export.spec.ts","./e2e/smoke-map.spec.ts","./e2e/smoke-parties-processes.spec.ts","./e2e/smoke-shared.spec.ts","./e2e/smoke-table.spec.ts","./e2e/smoke-teams.spec.ts"],"version":"5.9.3"}

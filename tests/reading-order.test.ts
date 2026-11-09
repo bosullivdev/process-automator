@@ -78,11 +78,11 @@ describe("csv export", () => {
     ]);
     const csv = processToCsv(p, [ops, fin]);
     const lines = csv.trimEnd().split("\r\n");
-    expect(lines[0]).toBe("No,Name,Owner,Type,Next,Technology,Contributors,Notes");
-    expect(lines[1]).toBe("1,Begin,Ops,start · timer,2: Approve?,,,");
+    expect(lines[0]).toBe("No,Name,Owner,Type,Next,Technology,Contributors,Teams,Notes");
+    expect(lines[1]).toBe("1,Begin,Ops,start · timer,2: Approve?,,,,");
     expect(lines[2]).toBe(
-      '2,Approve?,"Finance, EMEA",decision,"3: Done [Yes, default]; missing step [No]",SAP,Ops,"Check ""limits"""',
+      '2,Approve?,"Finance, EMEA",decision,"3: Done [Yes, default]; missing step [No]",SAP,Ops,,"Check ""limits"""',
     );
-    expect(lines[3]).toBe("3,Done,,end · terminate,,,,");
+    expect(lines[3]).toBe("3,Done,,end · terminate,,,,,");
   });
 });

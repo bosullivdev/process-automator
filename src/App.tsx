@@ -4,6 +4,8 @@ import { StepTable } from "./components/table/StepTable";
 import { ValidationPanel } from "./components/ValidationPanel";
 import { MapView } from "./components/map/MapView";
 import { PartySheet } from "./components/PartySheet";
+import { TeamSheet } from "./components/TeamSheet";
+import { TeamMenu } from "./components/TeamMenu";
 import { ProcessSwitcher } from "./components/ProcessSwitcher";
 import { ExportMenu, ImportButton, StorageNotice } from "./components/ExportMenu";
 import { Toaster } from "./components/ui/Toaster";
@@ -12,6 +14,7 @@ import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
 import { useApplyTheme } from "./hooks/useTheme";
 import { useLayout } from "./hooks/useLayout";
 import { flagsByStep, validateProcess } from "./model/validate";
+import { processForTeam, teamView, type TeamFocus } from "./model/team";
 import { startAutosave } from "./store/autosave";
 import { redo, selectActiveProcess, undo, useStore } from "./store/workspace";
 
@@ -21,6 +24,7 @@ export default function App() {
   const saveStatus = useStore((s) => s.saveStatus);
   const hydrated = useStore((s) => s.hydrated);
   const parties = useStore((s) => s.parties);
+  const teams = useStore((s) => s.teams);
   const process = useStore(selectActiveProcess);
   const selectedStepId = useStore((s) => s.selectedStepId);
   const selectStep = useStore((s) => s.selectStep);
@@ -28,6 +32,7 @@ export default function App() {
   const setLaneOrder = useStore((s) => s.setLaneOrder);
   const [tab, setTab] = useState<"table" | "map">("table");
   const [partiesOpen, setPartiesOpen] = useState(false);
+  const [teamsOpen, setTeamsOpen] = useState(false);
   const narrow = useMediaQuery(NARROW_QUERY);
   useApplyTheme();
 
@@ -49,9 +54,26 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // The team being looked at, if any. "highlight" fades the rest of the master
+  // process; "isolate" shows the team's variant alone. Either way the table,
+  // map, validation and exports all follow it.
+  const focus = useMemo<TeamFocus | null>(() => {
+    const teamId = view.highlightTeamId;
+    if (!process || !teamId || !teams.some((t) => t.id === teamId)) return null;
+    return { teamId, mode: view.teamFocus, view: teamView(process, teamId) };
+  }, [process, teams, view.highlightTeamId, view.teamFocus]);
+  const focusTeam = focus ? teams.find((t) => t.id === focus.teamId) : undefined;
+  /** The process as one team runs it, when a team is focused. */
+  const variant = useMemo(
+    () => (process && focus ? processForTeam(process, focus.teamId) : process),
+    [process, focus],
+  );
+  /** What the map and exports show: the variant alone when isolating, else the master. */
+  const shown = focus?.mode === "isolate" ? variant : process;
+
   const flags = useMemo(
-    () => (process ? validateProcess(process, { parties }) : []),
-    [process, parties],
+    () => (variant ? validateProcess(variant, { parties, teams }) : []),
+    [variant, parties, teams],
   );
   const flagMap = useMemo(() => flagsByStep(flags), [flags]);
   // Node sizes come from measured text, so rebuild the graph once the UI font has loaded.
@@ -67,11 +89,18 @@ export default function App() {
   }, []);
   const graph = useMemo(
     () =>
-      process
-        ? buildLayoutGraph(process, parties, view.shapeMode, view.orientation, view.annotations)
+      shown
+        ? buildLayoutGraph(
+            shown,
+            parties,
+            view.shapeMode,
+            view.orientation,
+            view.annotations,
+            teams,
+          )
         : { laneOrder: [], nodes: [], edges: [] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [process, parties, view.shapeMode, view.orientation, view.annotations, fontsReady],
+    [shown, parties, teams, view.shapeMode, view.orientation, view.annotations, fontsReady],
   );
   const { layout, updating } = useLayout(graph, view.orientation);
 
@@ -81,12 +110,12 @@ export default function App() {
       theme: view.theme === "system" ? "light" : view.theme === "light" ? "dark" : "system",
     });
 
-  if (!hydrated || !process) return null;
+  if (!hydrated || !process || !shown) return null;
 
   const table = (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1">
-        <StepTable process={process} flags={flagMap} />
+        <StepTable process={process} flags={flagMap} focus={focus} />
       </div>
       <ValidationPanel
         flags={flags}
@@ -97,13 +126,16 @@ export default function App() {
           row?.querySelector<HTMLInputElement>("input")?.focus();
         }}
         onRemoveLink={(stepId, targetId) => removeLink(process.id, stepId, targetId)}
+        teamName={focusTeam?.name}
       />
     </div>
   );
   const map = (
     <MapView
-      process={process}
+      process={shown}
       parties={parties}
+      teams={teams}
+      focus={focus}
       graph={graph}
       layout={layout}
       updating={updating}
@@ -124,13 +156,14 @@ export default function App() {
       >
         <span className="font-semibold whitespace-nowrap">Process Mapper</span>
         <ProcessSwitcher />
+        <TeamMenu onManage={() => setTeamsOpen(true)} />
         <div className="flex-1" />
         <button className="btn" aria-label="Parties" onClick={() => setPartiesOpen(true)}>
           Parties
           <span className="text-xs text-[var(--text-muted)]">{parties.length}</span>
         </button>
         <ImportButton />
-        <ExportMenu process={process} layout={layout} />
+        <ExportMenu process={shown} layout={layout} focus={focus} />
         <button
           className="btn"
           aria-label="Toggle orientation"
@@ -204,6 +237,7 @@ export default function App() {
         </div>
       )}
       <PartySheet open={partiesOpen} onClose={() => setPartiesOpen(false)} />
+      <TeamSheet open={teamsOpen} onClose={() => setTeamsOpen(false)} />
       <Toaster />
     </div>
   );

@@ -12,18 +12,28 @@ import { useResolvedTheme } from "../hooks/useTheme";
 import { Popover } from "./ui/Popover";
 import { toast } from "./ui/toast";
 import type { Process } from "../model/types";
+import type { TeamFocus } from "../model/team";
 
 interface Props {
+  /** The process as shown: the whole thing, or one team's variant when isolated. */
   process: Process;
   layout: LayoutResult | null;
+  focus: TeamFocus | null;
 }
 
-export function ExportMenu({ process, layout }: Props) {
+export function ExportMenu({ process, layout, focus }: Props) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const theme = useResolvedTheme();
   const parties = useStore((s) => s.parties);
+  const teams = useStore((s) => s.teams);
+  const team = focus ? teams.find((t) => t.id === focus.teamId) : undefined;
+  const teamLine = team
+    ? `Team: ${team.name}${focus?.mode === "isolate" ? " only" : " (highlighted)"}`
+    : undefined;
+  /** Filename stem: process name, plus the team when one is focused. */
+  const stem = `${safeFilename(process.name)}${team ? `-${safeFilename(team.name)}` : ""}`;
 
   const run = async (kind: "json" | "csv" | "svg" | "png" | "pdf") => {
     setOpen(false);
@@ -35,7 +45,7 @@ export function ExportMenu({ process, layout }: Props) {
         return;
       }
       if (kind === "csv") {
-        exportProcessCsv(process, parties);
+        exportProcessCsv(process, parties, teams, stem);
         return;
       }
       const svgEl = document.querySelector<SVGSVGElement>('[data-testid="map"] svg');
@@ -43,8 +53,8 @@ export function ExportMenu({ process, layout }: Props) {
         toast("Add some steps before exporting the map.");
         return;
       }
-      const svg = await buildExportSvg({ process, parties, layout, theme, svgEl });
-      const base = `${safeFilename(process.name)}-${datestamp()}`;
+      const svg = await buildExportSvg({ process, parties, layout, theme, svgEl, teamLine });
+      const base = `${stem}-${datestamp()}`;
       if (kind === "svg") downloadBlob(svgToBlob(svg), `${base}.svg`);
       else if (kind === "png") downloadBlob(await svgToPng(svg, 2), `${base}.png`);
       else {

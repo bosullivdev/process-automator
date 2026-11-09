@@ -2,7 +2,14 @@ import type { Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import type { LayoutNode, PositionedNode } from "../../graph/layout-types";
 import type { ResolvedColour } from "../../design/palette";
-import { BADGE_GAP, BADGE_ROW, BADGE_SIZE, TECH_GAP, TECH_ROW } from "../../graph/build-graph";
+import {
+  BADGE_GAP,
+  BADGE_ROW,
+  BADGE_SIZE,
+  TEAM_ROW,
+  TECH_GAP,
+  TECH_ROW,
+} from "../../graph/build-graph";
 import { partyInitials } from "../../model/party";
 
 export const MONO_FONT = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace';
@@ -21,6 +28,10 @@ interface Props {
   selected: boolean;
   flags: Flag[] | undefined;
   onSelect: (stepId: string) => void;
+  /** Names of the teams the step is scoped to, for the tooltip; empty = all teams. */
+  teamNames?: string[];
+  /** Faded because another team's variant is highlighted. */
+  dimmed?: boolean;
 }
 
 const LINE_H = 14;
@@ -34,6 +45,8 @@ export function MapNode({
   selected,
   flags,
   onSelect,
+  teamNames = [],
+  dimmed = false,
 }: Props) {
   const { kind, text } = layoutNode;
   // The shape sits inside the node box at (cx, cy); outside labels use the rest.
@@ -61,6 +74,7 @@ export function MapNode({
     ? [
         `${step.displayNo}: ${step.name || "Untitled"}`,
         step.technology ? `Technology: ${step.technology}` : "",
+        teamNames.length ? `Teams: ${teamNames.join(", ")}` : "",
         step.notes ? `Notes: ${step.notes}` : "",
         ...(flags ?? []).map(
           (f) => `${f.severity === "error" ? "Error" : "Warning"}: ${f.message}`,
@@ -175,6 +189,12 @@ export function MapNode({
   const badgeY = (showTech ? techTop + TECH_ROW : blockTop + nameH) + BADGE_ROW / 2;
   const badgesLeft = alignLeft(badgesW);
   const techLeft = alignLeft(techW);
+  const showTeams = !!text.teams;
+  const teamsW = text.teamsWidth;
+  const afterBadges = badgeY - BADGE_ROW / 2 + (badges.length ? BADGE_ROW : 0);
+  const teamsTop = afterBadges + (nameH || showTech || badges.length ? TECH_GAP : 0);
+  const teamsY = teamsTop + TEAM_ROW / 2;
+  const teamsLeft = alignLeft(teamsW);
   // Inside name block for tasks, centred (nudged up when the sub-process marker needs room).
   const insideTop = cy - (nameLines.length * LINE_H) / 2 - (step?.isSubProcess ? 6 : 0);
 
@@ -197,6 +217,8 @@ export function MapNode({
         }
       }}
       style={{ outline: "none" }}
+      opacity={dimmed ? 0.18 : undefined}
+      data-dimmed={dimmed || undefined}
     >
       <title>{title}</title>
       {shape}
@@ -272,6 +294,31 @@ export function MapNode({
           </g>
         );
       })}
+      {showTeams && (
+        <g style={{ pointerEvents: "none" }}>
+          <rect
+            x={teamsLeft}
+            y={teamsY - 8}
+            width={teamsW}
+            height={16}
+            rx={4}
+            fill="var(--surface)"
+            stroke="var(--border-strong)"
+            strokeWidth={1}
+            strokeDasharray="3 2"
+          />
+          <text
+            x={teamsLeft + teamsW / 2}
+            y={teamsY}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={10}
+            fill="var(--text-muted)"
+          >
+            {text.teams}
+          </text>
+        </g>
+      )}
       {isTask && step?.isSubProcess && (
         <g
           transform={`translate(${cx - 6}, ${y + height - 16})`}

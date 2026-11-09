@@ -7,6 +7,7 @@ import type {
   Process,
   Step,
   StepType,
+  Team,
   ViewSettings,
   Workspace,
 } from "../model/types";
@@ -16,6 +17,11 @@ import {
   mergeParties as mergePartiesPure,
 } from "../model/party";
 import { assignOwners as assignOwnersPure } from "../model/share";
+import {
+  createTeam,
+  deleteTeam as deleteTeamPure,
+  renameTeam as renameTeamPure,
+} from "../model/team";
 import {
   createEmptyWorkspace,
   createProcess,
@@ -69,6 +75,7 @@ function applyType(s: Step, type: StepType): void {
 export interface DocState {
   meta: Workspace["meta"];
   parties: Party[];
+  teams: Team[];
   processes: Process[];
 }
 
@@ -95,6 +102,8 @@ export interface StoreState extends DocState {
    */
   assignOwners: (processId: string, stepId: string, partyIds: string[]) => string[];
   setStepNext: (processId: string, stepId: string, next: NextLink[]) => void;
+  /** Scope a step to some teams; an empty list means every team. */
+  setStepTeams: (processId: string, stepId: string, teamIds: string[]) => void;
   removeLink: (processId: string, stepId: string, targetId: string) => void;
   deleteStep: (processId: string, stepId: string) => void;
   duplicateStep: (processId: string, stepId: string) => string | null;
@@ -107,6 +116,11 @@ export interface StoreState extends DocState {
   mergeParties: (survivorId: string, droppedId: string) => void;
   deleteParty: (partyId: string) => void;
   setPartyOverride: (partyId: string, colour: string | undefined) => void;
+
+  addTeam: (name: string) => string;
+  renameTeam: (teamId: string, name: string) => void;
+  /** No-op while the team is referenced by any step or link. */
+  deleteTeam: (teamId: string) => void;
 
   addProcess: (name?: string) => string;
   renameProcess: (processId: string, name: string) => void;
@@ -152,10 +166,18 @@ export const useStore = create<StoreState>()(
       const edit = (recipe: (doc: DocState) => void, coalesce = false) => {
         coalesceNext = coalesce;
         set((state) =>
-          produce({ meta: state.meta, parties: state.parties, processes: state.processes }, (d) => {
-            recipe(d);
-            touch(d);
-          }),
+          produce(
+            {
+              meta: state.meta,
+              parties: state.parties,
+              teams: state.teams,
+              processes: state.processes,
+            },
+            (d) => {
+              recipe(d);
+              touch(d);
+            },
+          ),
         );
         coalesceNext = false;
       };
@@ -163,6 +185,7 @@ export const useStore = create<StoreState>()(
       return {
         meta: initial.meta,
         parties: initial.parties,
+        teams: initial.teams,
         processes: initial.processes,
         view: initial.view,
         selectedStepId: null,
@@ -173,6 +196,7 @@ export const useStore = create<StoreState>()(
           set({
             meta: ws.meta,
             parties: ws.parties,
+            teams: ws.teams,
             processes: ws.processes,
             view: ws.view,
             selectedStepId: null,
@@ -259,6 +283,11 @@ export const useStore = create<StoreState>()(
             if (!s) return;
             s.next = next.filter((l) => l.targetId !== stepId);
           }),
+        setStepTeams: (processId, stepId, teamIds) =>
+          edit((d) => {
+            const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
+            if (s) s.teamIds = [...new Set(teamIds)];
+          }),
         removeLink: (processId, stepId, targetId) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
@@ -343,6 +372,26 @@ export const useStore = create<StoreState>()(
             else delete p.colourOverride;
           }),
 
+        addTeam: (name) => {
+          const team = createTeam(name);
+          edit((d) => {
+            d.teams.push(team);
+          });
+          return team.id;
+        },
+        renameTeam: (teamId, name) =>
+          edit((d) => {
+            d.teams = renameTeamPure(asWorkspace(d), teamId, name).teams;
+          }),
+        deleteTeam: (teamId) => {
+          edit((d) => {
+            d.teams = deleteTeamPure(asWorkspace(d), teamId).teams;
+          });
+          if (get().view.highlightTeamId === teamId && !get().teams.some((t) => t.id === teamId)) {
+            set((s) => ({ view: { ...s.view, highlightTeamId: null } }));
+          }
+        },
+
         addProcess: (name) => {
           const proc = createProcess(name ?? `Process ${get().processes.length + 1}`);
           edit((d) => {
@@ -412,10 +461,15 @@ export const useStore = create<StoreState>()(
           set({
             meta: base.meta,
             parties: base.parties,
+            teams: base.teams ?? [],
             processes: base.processes,
             view: {
               ...base.view,
               annotations: base.view.annotations ?? "full",
+              highlightTeamId: base.teams?.some((t) => t.id === base.view.highlightTeamId)
+                ? base.view.highlightTeamId
+                : null,
+              teamFocus: base.view.teamFocus ?? "highlight",
               activeProcessId: activeOk
                 ? base.view.activeProcessId
                 : (base.processes[0]?.id ?? null),
@@ -431,10 +485,14 @@ export const useStore = create<StoreState>()(
       partialize: (state) => ({
         meta: state.meta,
         parties: state.parties,
+        teams: state.teams,
         processes: state.processes,
       }),
       equality: (a, b) =>
-        a.parties === b.parties && a.processes === b.processes && a.meta === b.meta,
+        a.parties === b.parties &&
+        a.teams === b.teams &&
+        a.processes === b.processes &&
+        a.meta === b.meta,
       limit: 200,
       handleSet: (handleSet) => (pastState, replace) => {
         const now = Date.now();
@@ -456,6 +514,7 @@ function asWorkspace(doc: DocState): Workspace {
     schemaVersion: 1,
     meta: doc.meta,
     parties: doc.parties,
+    teams: doc.teams,
     processes: doc.processes,
     view: useStore.getState().view,
   };
@@ -467,6 +526,7 @@ export function selectWorkspace(s: StoreState): Workspace {
     schemaVersion: 1,
     meta: s.meta,
     parties: s.parties,
+    teams: s.teams,
     processes: s.processes,
     view: s.view,
   };

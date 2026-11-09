@@ -5,9 +5,11 @@ interface Props {
   flags: Flag[];
   onSelectStep: (stepId: string) => void;
   onRemoveLink?: (stepId: string, targetId: string) => void;
+  /** Name of the team whose variant is being checked, if one is focused. */
+  teamName?: string;
 }
 
-export function ValidationPanel({ flags, onSelectStep, onRemoveLink }: Props) {
+export function ValidationPanel({ flags, onSelectStep, onRemoveLink, teamName }: Props) {
   const [open, setOpen] = useState(true);
   const errors = flags.filter((f) => f.severity === "error").length;
   const warnings = flags.length - errors;
@@ -26,6 +28,15 @@ export function ValidationPanel({ flags, onSelectStep, onRemoveLink }: Props) {
       >
         <span className="inline-block w-3 text-[var(--text-muted)]">{open ? "▾" : "▸"}</span>
         <span>Validation</span>
+        {teamName && (
+          <span
+            className="rounded-md border px-1.5 py-px text-[11px] font-normal text-[var(--text-muted)]"
+            style={{ borderColor: "var(--border)" }}
+            data-testid="validation-team"
+          >
+            {teamName}
+          </span>
+        )}
         <span className="ml-1 flex items-center gap-2 text-[var(--text-muted)]">
           {errors > 0 && (
             <span className="inline-flex items-center gap-1">

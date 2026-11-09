@@ -1,18 +1,29 @@
-import type { PickerItem } from "./usePartyPicker";
-import { PartySwatch } from "../ui/PartySwatch";
+import type { ReactNode } from "react";
+import type { Named, PickerItem } from "./usePartyPicker";
 
-interface Props {
-  items: PickerItem[];
+interface Props<T extends Named> {
+  items: PickerItem<T>[];
   active: number;
-  onPick: (item: PickerItem) => void;
+  onPick: (item: PickerItem<T>) => void;
   onHover: (index: number) => void;
+  /** Icon drawn before a name; null item means "Unassigned". */
+  swatch: (item: T | null, size?: number) => ReactNode;
+  /** What the list offers, for the empty state: "parties" or "teams". */
+  noun?: string;
 }
 
-export function PartyList({ items, active, onPick, onHover }: Props) {
+export function PartyList<T extends Named>({
+  items,
+  active,
+  onPick,
+  onHover,
+  swatch,
+  noun = "parties",
+}: Props<T>) {
   if (items.length === 0) {
     return (
       <div className="px-2 py-1.5 text-xs text-[var(--text-muted)]">
-        No parties yet. Type a name to create one.
+        No {noun} yet. Type a name to create one.
       </div>
     );
   }
@@ -36,7 +47,7 @@ export function PartyList({ items, active, onPick, onHover }: Props) {
           >
             {item.kind === "party" && (
               <>
-                <PartySwatch party={item.party} />
+                {swatch(item.party)}
                 <span className="truncate">
                   {item.near ? `Use ${item.party.name}?` : item.party.name}
                 </span>
@@ -52,13 +63,13 @@ export function PartyList({ items, active, onPick, onHover }: Props) {
             )}
             {item.kind === "clear" && (
               <>
-                <PartySwatch party={null} />
+                {swatch(null)}
                 <span className="text-[var(--text-muted)]">Unassigned</span>
               </>
             )}
             {item.kind === "share" && (
               <>
-                <PartySwatch party={item.party} />
+                {swatch(item.party)}
                 <span className="flex min-w-0 flex-col leading-tight">
                   <span className="truncate">
                     Also <strong>{item.party.name}</strong>
@@ -72,7 +83,7 @@ export function PartyList({ items, active, onPick, onHover }: Props) {
             {item.kind === "multi" && (
               <span className="flex min-w-0 flex-col leading-tight">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <PartySwatch party={item.parts[0].party} />
+                  {swatch(item.parts[0].party)}
                   <span className="truncate">
                     <strong>{item.parts[0].name}</strong>
                     {item.parts[0].party ? "" : " (new)"} owns
@@ -81,7 +92,7 @@ export function PartyList({ items, active, onPick, onHover }: Props) {
                 <span className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-muted)]">
                   <span className="flex shrink-0 items-center gap-0.5">
                     {copies.map((p) => (
-                      <PartySwatch key={p.name} party={p.party} size={8} />
+                      <span key={p.name}>{swatch(p.party, 8)}</span>
                     ))}
                   </span>
                   <span className="truncate">

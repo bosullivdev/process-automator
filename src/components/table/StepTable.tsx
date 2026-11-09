@@ -5,6 +5,8 @@ import { worstSeverity } from "../../model/validate";
 import { stepVariant, undo, useStore, type StepVariant } from "../../store/workspace";
 import { OwnerCombobox } from "./OwnerCombobox";
 import { ContributorsCombobox } from "./ContributorsCombobox";
+import { TeamsCombobox } from "./TeamsCombobox";
+import type { TeamFocus } from "../../model/team";
 import { NextPicker } from "./NextPicker";
 import { Tooltip } from "../ui/Tooltip";
 import { toast } from "../ui/toast";
@@ -13,10 +15,14 @@ import { readingOrder } from "../../graph/reading-order";
 interface Props {
   process: Process;
   flags: Map<string, Flag[]>;
+  focus: TeamFocus | null;
 }
 
-export function StepTable({ process, flags }: Props) {
+export function StepTable({ process, flags, focus }: Props) {
   const parties = useStore((s) => s.parties);
+  const teams = useStore((s) => s.teams);
+  const setStepTeams = useStore((s) => s.setStepTeams);
+  const addTeam = useStore((s) => s.addTeam);
   const selectedStepId = useStore((s) => s.selectedStepId);
   const selectStep = useStore((s) => s.selectStep);
   const addStep = useStore((s) => s.addStep);
@@ -56,12 +62,17 @@ export function StepTable({ process, flags }: Props) {
 
   const addAfter = useCallback(
     (afterStepId?: string, partial?: Partial<Step>) => {
-      const id = addStep(process.id, { afterStepId, partial });
+      // A row added while one team's variant is shown alone belongs to that team.
+      const scoped =
+        focus?.mode === "isolate" && !partial?.teamIds
+          ? { ...partial, teamIds: [focus.teamId] }
+          : partial;
+      const id = addStep(process.id, { afterStepId, partial: scoped });
       pendingFocus.current = id;
       selectStep(id);
       return id;
     },
-    [addStep, process.id, selectStep],
+    [addStep, focus, process.id, selectStep],
   );
 
   const remove = useCallback(
@@ -114,6 +125,7 @@ export function StepTable({ process, flags }: Props) {
   const emptySet = useMemo(() => new Set<string>(), []);
 
   const createParty = useCallback((name: string) => addParty(name), [addParty]);
+  const createTeam = useCallback((name: string) => addTeam(name), [addTeam]);
 
   const assign = useCallback(
     (step: Step, partyIds: string[]) => {
@@ -136,7 +148,7 @@ export function StepTable({ process, flags }: Props) {
 
   return (
     <div ref={tableRef} className="h-full overflow-auto" data-testid="step-table">
-      <table className="w-full min-w-[1180px] table-fixed border-separate border-spacing-0 text-sm">
+      <table className="w-full min-w-[1320px] table-fixed border-separate border-spacing-0 text-sm">
         <thead className="sticky top-0 z-10" style={{ background: "var(--surface)" }}>
           <tr className="text-left text-xs font-medium text-[var(--text-muted)]">
             <Th className="w-14">No</Th>
@@ -145,13 +157,16 @@ export function StepTable({ process, flags }: Props) {
             <Th className="w-[168px]">Type</Th>
             <Th className="w-[19%]">Next</Th>
             <Th className="w-[11%]">Technology</Th>
-            <Th className="w-[13%]">Contributors</Th>
+            <Th className="w-[12%]">Contributors</Th>
+            <Th className="w-[11%]">Teams</Th>
             <Th>Notes</Th>
             <Th className="w-9"> </Th>
           </tr>
         </thead>
         <tbody>
           {process.steps.map((step) => {
+            const inTeam = !focus || focus.view.stepIds.has(step.id);
+            if (focus?.mode === "isolate" && !inTeam) return null;
             const stepFlags = flags.get(step.id);
             const sev = worstSeverity(stepFlags);
             const selected = step.id === selectedStepId;
@@ -164,7 +179,8 @@ export function StepTable({ process, flags }: Props) {
                 }}
                 data-step-id={step.id}
                 data-selected={selected}
-                className="group"
+                data-in-team={focus ? inTeam : undefined}
+                className={inTeam ? "group" : "group opacity-40"}
                 style={{ background: selected ? "var(--selection)" : undefined }}
                 onFocus={() => {
                   if (selectedStepId !== step.id) selectStep(step.id);
@@ -263,6 +279,7 @@ export function StepTable({ process, flags }: Props) {
                   <NextPicker
                     step={step}
                     steps={process.steps}
+                    teams={teams}
                     brokenTargets={brokenByStep.get(step.id) ?? emptySet}
                     onChange={(next: NextLink[]) => setStepNext(process.id, step.id, next)}
                     onCreateStep={() => {
@@ -291,6 +308,15 @@ export function StepTable({ process, flags }: Props) {
                     onChange={(ids) => updateStep(process.id, step.id, { contributorIds: ids })}
                     onCreateParty={createParty}
                     ariaLabel="Contributors"
+                  />
+                </Td>
+                <Td>
+                  <TeamsCombobox
+                    value={step.teamIds}
+                    teams={teams}
+                    onChange={(ids) => setStepTeams(process.id, step.id, ids)}
+                    onCreateTeam={createTeam}
+                    ariaLabel="Teams"
                   />
                 </Td>
                 <Td>

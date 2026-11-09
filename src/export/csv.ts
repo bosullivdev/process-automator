@@ -1,4 +1,5 @@
-import type { Party, Process, Step } from "../model/types";
+import type { Party, Process, Step, Team } from "../model/types";
+import { teamNames } from "../model/team";
 import { datestamp, downloadBlob, safeFilename } from "./download";
 
 export const CSV_COLUMNS = [
@@ -9,6 +10,7 @@ export const CSV_COLUMNS = [
   "Next",
   "Technology",
   "Contributors",
+  "Teams",
   "Notes",
 ] as const;
 
@@ -30,8 +32,16 @@ function typeLabel(step: Step): string {
   }
 }
 
-/** The table as CSV rows, in table order, with names instead of ids. */
-export function processToCsv(process: Process, parties: readonly Party[]): string {
+/**
+ * The table as CSV rows, in table order, with names instead of ids. A step
+ * scoped to some teams lists them; a link scoped to some teams shows them in
+ * braces after the target. Empty means every team.
+ */
+export function processToCsv(
+  process: Process,
+  parties: readonly Party[],
+  teams: readonly Team[] = [],
+): string {
   const partyName = (id: string | null) =>
     id === null ? "" : (parties.find((p) => p.id === id)?.name ?? "Unknown party");
   const byId = new Map(process.steps.map((s) => [s.id, s]));
@@ -42,7 +52,8 @@ export function processToCsv(process: Process, parties: readonly Party[]): strin
         const base = t ? `${t.displayNo}: ${t.name || "Untitled"}` : "missing step";
         const label =
           s.type === "decision" && l.label ? ` [${l.label}${l.isDefault ? ", default" : ""}]` : "";
-        return base + label;
+        const scope = l.teamIds?.length ? ` {${teamNames(l.teamIds, teams).join(", ")}}` : "";
+        return base + label + scope;
       })
       .join("; ");
     return [
@@ -53,6 +64,7 @@ export function processToCsv(process: Process, parties: readonly Party[]): strin
       next,
       s.technology,
       s.contributorIds.map(partyName).join("; "),
+      teamNames(s.teamIds, teams).join("; "),
       s.notes,
     ];
   });
@@ -60,10 +72,15 @@ export function processToCsv(process: Process, parties: readonly Party[]): strin
   return lines.join("\r\n") + "\r\n";
 }
 
-export function exportProcessCsv(process: Process, parties: readonly Party[]): void {
+export function exportProcessCsv(
+  process: Process,
+  parties: readonly Party[],
+  teams: readonly Team[] = [],
+  fileBase = safeFilename(process.name),
+): void {
   // The byte-order mark makes Excel read the file as UTF-8.
-  const blob = new Blob(["﻿", processToCsv(process, parties)], {
+  const blob = new Blob(["﻿", processToCsv(process, parties, teams)], {
     type: "text/csv;charset=utf-8",
   });
-  downloadBlob(blob, `${safeFilename(process.name)}-${datestamp()}.csv`);
+  downloadBlob(blob, `${fileBase}-${datestamp()}.csv`);
 }
