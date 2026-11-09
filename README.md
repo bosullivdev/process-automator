@@ -24,6 +24,16 @@ a static site.
 - **Owner / Contributors**: comboboxes over the party registry. An exact
   match links the existing party; a near match offers "Use X?"; otherwise a
   new party is created with the next free colour.
+- **Shared steps**: a step belongs to one lane, so a task two teams both do
+  is drawn once per team. Type several teams in the Owner cell separated by
+  commas ("Sales, Legal"), or pick "Also Legal" from the dropdown of a step
+  that already has an owner. The first team owns the row; each further team
+  gets a copy of the step in its own lane with the same name, type,
+  technology, notes and Next links, and every step that led to the original
+  also leads to the copy, so the map shows a fork into both lanes and a join
+  afterwards. A decision leading in gets its outcome repeated as
+  "Yes (Legal)" so labels stay unique. Teams in the group are removed from
+  the contributors of the shared steps. One undo reverts the whole thing.
 - **Next**: a searchable multi-select of steps in the same process with a
   "Create new step" entry. Decisions get a label and a default toggle per
   outcome.

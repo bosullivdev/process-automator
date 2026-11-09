@@ -20,6 +20,7 @@ export function PartyList({ items, active, onPick, onHover }: Props) {
     <ul role="listbox" className="flex flex-col">
       {items.map((item, i) => {
         const key = item.kind === "party" ? item.party.id : item.kind;
+        const copies = item.kind === "multi" ? item.parts.slice(1) : [];
         return (
           <li
             key={key}
@@ -54,6 +55,40 @@ export function PartyList({ items, active, onPick, onHover }: Props) {
                 <PartySwatch party={null} />
                 <span className="text-[var(--text-muted)]">Unassigned</span>
               </>
+            )}
+            {item.kind === "share" && (
+              <>
+                <PartySwatch party={item.party} />
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="truncate">
+                    Also <strong>{item.party.name}</strong>
+                  </span>
+                  <span className="truncate text-xs text-[var(--text-muted)]">
+                    Copy this step into their lane, same links
+                  </span>
+                </span>
+              </>
+            )}
+            {item.kind === "multi" && (
+              <span className="flex min-w-0 flex-col leading-tight">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <PartySwatch party={item.parts[0].party} />
+                  <span className="truncate">
+                    <strong>{item.parts[0].name}</strong>
+                    {item.parts[0].party ? "" : " (new)"} owns
+                  </span>
+                </span>
+                <span className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                  <span className="flex shrink-0 items-center gap-0.5">
+                    {copies.map((p) => (
+                      <PartySwatch key={p.name} party={p.party} size={8} />
+                    ))}
+                  </span>
+                  <span className="truncate">
+                    Copy to {copies.map((p) => p.name + (p.party ? "" : " (new)")).join(", ")}
+                  </span>
+                </span>
+              </span>
             )}
           </li>
         );

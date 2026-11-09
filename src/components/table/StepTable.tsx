@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { NextLink, Process, Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import { worstSeverity } from "../../model/validate";
-import { stepVariant, useStore, type StepVariant } from "../../store/workspace";
+import { stepVariant, undo, useStore, type StepVariant } from "../../store/workspace";
 import { OwnerCombobox } from "./OwnerCombobox";
 import { ContributorsCombobox } from "./ContributorsCombobox";
 import { NextPicker } from "./NextPicker";
@@ -23,6 +23,7 @@ export function StepTable({ process, flags }: Props) {
   const updateStep = useStore((s) => s.updateStep);
   const setStepVariant = useStore((s) => s.setStepVariant);
   const setStepOwner = useStore((s) => s.setStepOwner);
+  const assignOwners = useStore((s) => s.assignOwners);
   const setStepNext = useStore((s) => s.setStepNext);
   const deleteStep = useStore((s) => s.deleteStep);
   const duplicateStep = useStore((s) => s.duplicateStep);
@@ -113,6 +114,25 @@ export function StepTable({ process, flags }: Props) {
   const emptySet = useMemo(() => new Set<string>(), []);
 
   const createParty = useCallback((name: string) => addParty(name), [addParty]);
+
+  const assign = useCallback(
+    (step: Step, partyIds: string[]) => {
+      const copyIds = assignOwners(process.id, step.id, partyIds);
+      if (copyIds.length === 0) return;
+      const proc = useStore.getState().processes.find((p) => p.id === process.id);
+      const names = useStore.getState().parties;
+      const where = copyIds
+        .map((id) => proc?.steps.find((s) => s.id === id))
+        .filter((s): s is Step => !!s)
+        .map((s) => `${names.find((p) => p.id === s.ownerId)?.name ?? "?"} (step ${s.displayNo})`)
+        .join(", ");
+      toast(`Copied step ${step.displayNo} to ${where}, with the same links.`, {
+        label: "Undo",
+        onClick: () => undo(),
+      });
+    },
+    [assignOwners, process.id],
+  );
 
   return (
     <div ref={tableRef} className="h-full overflow-auto" data-testid="step-table">
@@ -207,6 +227,7 @@ export function StepTable({ process, flags }: Props) {
                     value={step.ownerId}
                     parties={parties}
                     onChange={(id) => setStepOwner(process.id, step.id, id)}
+                    onAssign={(ids) => assign(step, ids)}
                     onCreateParty={createParty}
                     ariaLabel="Owner"
                   />

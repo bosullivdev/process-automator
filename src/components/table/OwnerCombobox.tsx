@@ -1,20 +1,41 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Party } from "../../model/types";
+import { matchParty } from "../../model/party";
+import { splitOwnerQuery } from "../../model/share";
 import { Popover } from "../ui/Popover";
 import { PartySwatch } from "../ui/PartySwatch";
 import { PartyList } from "./PartyList";
-import { usePartyPicker, type PickerItem } from "./usePartyPicker";
+import { usePartyPicker, type OwnerPart, type PickerItem } from "./usePartyPicker";
 
 interface Props {
   value: string | null;
   parties: Party[];
   onChange: (partyId: string | null) => void;
+  /**
+   * Several responsible teams: the first owns the step, each further one
+   * gets a linked copy in its own lane. Entered as "Sales, Legal" or via the
+   * "Also X" option.
+   */
+  onAssign: (partyIds: string[]) => void;
   onCreateParty: (name: string) => string;
   onEnterRow?: () => void;
   ariaLabel: string;
 }
 
-export function OwnerCombobox({ value, parties, onChange, onCreateParty, ariaLabel }: Props) {
+/** Resolve a typed team name the way Enter would: exact or near match, else a new party. */
+function resolvePart(name: string, parties: readonly Party[]): OwnerPart {
+  const m = matchParty(name, parties);
+  return { name, party: m.kind === "new" ? null : m.party };
+}
+
+export function OwnerCombobox({
+  value,
+  parties,
+  onChange,
+  onAssign,
+  onCreateParty,
+  ariaLabel,
+}: Props) {
   const current = parties.find((p) => p.id === value) ?? null;
   // null = "not editing": show the current party name.
   const [draft, setDraft] = useState<string | null>(null);
@@ -23,7 +44,27 @@ export function OwnerCombobox({ value, parties, onChange, onCreateParty, ariaLab
   const [activeOverride, setActiveOverride] = useState<number | null>(null);
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
 
-  const { items, defaultIndex } = usePartyPicker(query, parties, { allowClear: true });
+  const base = usePartyPicker(query, parties, { allowClear: true });
+  const { items, defaultIndex } = useMemo(() => {
+    const parts = splitOwnerQuery(query);
+    if (parts.length >= 2) {
+      const multi: PickerItem = { kind: "multi", parts: parts.map((n) => resolvePart(n, parties)) };
+      return { items: [multi], defaultIndex: 0 };
+    }
+    if (!current || parts.length === 0) return base;
+    const m = matchParty(query, parties);
+    if (m.kind === "new" || m.party.id === current.id) return base;
+    // Offer to share with the matched party, just after the party entries.
+    const at = base.items.findIndex((i) => i.kind === "create" || i.kind === "clear");
+    const idx = at < 0 ? base.items.length : at;
+    const list = [...base.items];
+    list.splice(idx, 0, { kind: "share", party: m.party });
+    return {
+      items: list,
+      defaultIndex: base.defaultIndex >= idx ? base.defaultIndex + 1 : base.defaultIndex,
+    };
+  }, [base, current, parties, query]);
+
   const active = activeOverride ?? defaultIndex;
   const setActive = (fn: number | ((a: number) => number)) =>
     setActiveOverride(typeof fn === "function" ? fn(active) : fn);
@@ -45,10 +86,13 @@ export function OwnerCombobox({ value, parties, onChange, onCreateParty, ariaLab
         if (query.trim() === "") onChange(null);
       } else if (item.kind === "party") onChange(item.party.id);
       else if (item.kind === "create") onChange(onCreateParty(item.name));
-      else onChange(null);
+      else if (item.kind === "share") onAssign([current!.id, item.party.id]);
+      else if (item.kind === "multi") {
+        onAssign(item.parts.map((p) => p.party?.id ?? onCreateParty(p.name)));
+      } else onChange(null);
       setOpen(false);
     },
-    [onChange, onCreateParty, query],
+    [current, onAssign, onChange, onCreateParty, query],
   );
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -89,6 +133,7 @@ export function OwnerCombobox({ value, parties, onChange, onCreateParty, ariaLab
         className="cell-input pl-0"
         value={query}
         placeholder="Unassigned"
+        title="One team, or several separated by commas: the first owns the step and each other team gets a copy in its own lane."
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);

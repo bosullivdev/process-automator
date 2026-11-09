@@ -15,6 +15,7 @@ import {
   deleteParty as deletePartyPure,
   mergeParties as mergePartiesPure,
 } from "../model/party";
+import { assignOwners as assignOwnersPure } from "../model/share";
 import {
   createEmptyWorkspace,
   createProcess,
@@ -87,6 +88,12 @@ export interface StoreState extends DocState {
   /** Set type and its variant (start kind, end kind, sub-process marker) as one undoable edit. */
   setStepVariant: (processId: string, stepId: string, variant: StepVariant) => void;
   setStepOwner: (processId: string, stepId: string, partyId: string | null) => void;
+  /**
+   * Give a step several responsible teams in one undoable edit: the first
+   * becomes the owner, each further team gets a linked copy in its own lane.
+   * Returns the IDs of the copies.
+   */
+  assignOwners: (processId: string, stepId: string, partyIds: string[]) => string[];
   setStepNext: (processId: string, stepId: string, next: NextLink[]) => void;
   removeLink: (processId: string, stepId: string, targetId: string) => void;
   deleteStep: (processId: string, stepId: string) => void;
@@ -235,6 +242,17 @@ export const useStore = create<StoreState>()(
             s.ownerId = partyId;
             ensureLane(proc, partyId);
           }),
+        assignOwners: (processId, stepId, partyIds) => {
+          let copyIds: string[] = [];
+          edit((d) => {
+            const idx = d.processes.findIndex((p) => p.id === processId);
+            if (idx < 0) return;
+            const result = assignOwnersPure(d.processes[idx], stepId, partyIds, d.parties);
+            d.processes[idx] = result.process;
+            copyIds = result.copyIds;
+          });
+          return copyIds;
+        },
         setStepNext: (processId, stepId, next) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);

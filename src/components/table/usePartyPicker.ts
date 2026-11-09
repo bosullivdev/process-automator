@@ -2,10 +2,20 @@ import { useMemo } from "react";
 import type { Party } from "../../model/types";
 import { matchParty, normaliseName } from "../../model/party";
 
+/** One team name typed into a multi-owner entry and the party it resolves to (null = create). */
+export interface OwnerPart {
+  name: string;
+  party: Party | null;
+}
+
 export type PickerItem =
   | { kind: "party"; party: Party; near?: boolean }
   | { kind: "create"; name: string }
-  | { kind: "clear" };
+  | { kind: "clear" }
+  /** Owner only: copy this step into another party's lane as well. */
+  | { kind: "share"; party: Party }
+  /** Owner only: several teams typed at once; the first owns, the rest get copies. */
+  | { kind: "multi"; parts: OwnerPart[] };
 
 /**
  * Builds the dropdown list for an owner/contributor combobox from the typed
