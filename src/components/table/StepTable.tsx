@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NextLink, Process, Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import { worstSeverity } from "../../model/validate";
-import { stepVariant, undo, useStore, type StepVariant } from "../../store/workspace";
+import { applyVariant, stepVariant, undo, useStore, type StepVariant } from "../../store/workspace";
 import { OwnerCombobox } from "./OwnerCombobox";
 import { ContributorsCombobox } from "./ContributorsCombobox";
 import { TeamsCombobox } from "./TeamsCombobox";
@@ -67,6 +67,8 @@ export function StepTable({ process, flags, focus }: Props) {
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const pendingFocus = useRef<string | null>(null);
+  /** After a copy-on-write fork, move focus to the same cell of the new row. */
+  const pendingCell = useRef<{ stepId: string; label: string } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
   const { widths, setWidth, resetWidth } = useColumnWidths();
   // The Notes column stretches so the table fills the pane when the others are narrow.
@@ -84,6 +86,18 @@ export function StepTable({ process, flags, focus }: Props) {
   const tableWidth = fixedTotal + notesWidth;
 
   useEffect(() => {
+    if (pendingCell.current) {
+      const { stepId, label } = pendingCell.current;
+      const row = rowRefs.current.get(stepId);
+      const el = row?.querySelector<HTMLInputElement | HTMLSelectElement>(
+        `[aria-label="${label}"]`,
+      );
+      if (el) {
+        pendingCell.current = null;
+        el.focus();
+        if (el instanceof HTMLInputElement) el.setSelectionRange(el.value.length, el.value.length);
+      }
+    }
     if (!pendingFocus.current) return;
     const el = nameRefs.current.get(pendingFocus.current);
     if (el) {
@@ -151,6 +165,41 @@ export function StepTable({ process, flags, focus }: Props) {
     });
   };
 
+  /**
+   * Edit a step for the isolated team only. A step other teams also use is
+   * first copied for this team and the edit lands on the copy, which takes the
+   * row's place in this view; otherwise the edit applies directly. Returns
+   * false when the caller should apply the edit itself.
+   */
+  const editForTeam = (step: Step, apply: (s: Step) => void): boolean => {
+    if (!isolate || !isolateTeam || !sharedWithOthers(step)) return false;
+    const active = document.activeElement;
+    const label =
+      active instanceof HTMLElement && active.getAttribute("role") !== "combobox"
+        ? active.getAttribute("aria-label")
+        : null;
+    const id = forkStepForTeam(process.id, step.id, isolate.teamId, apply);
+    if (!id) return false;
+    if (label) pendingCell.current = { stepId: id, label };
+    selectStep(id);
+    toast(
+      `Step ${step.displayNo} is now ${isolateTeam.name}'s own copy, so this change applies to ${isolateTeam.name} only.`,
+      { label: "Undo", onClick: () => undo() },
+    );
+    return true;
+  };
+  const patchStep = (step: Step, patch: Partial<Step>) => {
+    if (!editForTeam(step, (s) => Object.assign(s, patch))) updateStep(process.id, step.id, patch);
+  };
+  const changeOwner = (step: Step, ownerId: string | null) => {
+    if (!editForTeam(step, (s) => (s.ownerId = ownerId)))
+      setStepOwner(process.id, step.id, ownerId);
+  };
+  const changeVariant = (step: Step, variant: StepVariant) => {
+    if (!editForTeam(step, (s) => applyVariant(s, variant)))
+      setStepVariant(process.id, step.id, variant);
+  };
+
   /** Delete, or in an isolated view with other teams on the step, just leave the route. */
   const removeOrLeave = (step: Step) => (sharedWithOthers(step) ? leaveTeam(step) : remove(step));
 
@@ -196,7 +245,12 @@ export function StepTable({ process, flags, focus }: Props) {
 
   const assign = useCallback(
     (step: Step, partyIds: string[]) => {
-      const copyIds = assignOwners(process.id, step.id, partyIds);
+      // Sharing a step with more owners inside a team's own view works on the team's copy.
+      const forked =
+        isolate && sharedWithOthers(step)
+          ? forkStepForTeam(process.id, step.id, isolate.teamId)
+          : null;
+      const copyIds = assignOwners(process.id, forked ?? step.id, partyIds);
       if (copyIds.length === 0) return;
       const proc = useStore.getState().processes.find((p) => p.id === process.id);
       const names = useStore.getState().parties;
@@ -210,7 +264,8 @@ export function StepTable({ process, flags, focus }: Props) {
         onClick: () => undo(),
       });
     },
-    [assignOwners, process.id],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [assignOwners, forkStepForTeam, isolate, process.id, teams],
   );
 
   return (
@@ -308,7 +363,7 @@ export function StepTable({ process, flags, focus }: Props) {
                     aria-label="Step name"
                     placeholder="Step name"
                     value={step.name}
-                    onChange={(e) => updateStep(process.id, step.id, { name: e.target.value })}
+                    onChange={(e) => patchStep(step, { name: e.target.value })}
                     onKeyDown={(e) => onTextKeyDown(e, step)}
                   />
                 </Td>
@@ -316,7 +371,7 @@ export function StepTable({ process, flags, focus }: Props) {
                   <OwnerCombobox
                     value={step.ownerId}
                     parties={parties}
-                    onChange={(id) => setStepOwner(process.id, step.id, id)}
+                    onChange={(id) => changeOwner(step, id)}
                     onAssign={(ids) => assign(step, ids)}
                     onCreateParty={createParty}
                     ariaLabel="Owner"
@@ -327,9 +382,7 @@ export function StepTable({ process, flags, focus }: Props) {
                     className="cell-input h-8 px-2"
                     aria-label="Step type"
                     value={stepVariant(step)}
-                    onChange={(e) =>
-                      setStepVariant(process.id, step.id, e.target.value as StepVariant)
-                    }
+                    onChange={(e) => changeVariant(step, e.target.value as StepVariant)}
                   >
                     <optgroup label="Start">
                       <option value="start">start</option>
@@ -369,9 +422,7 @@ export function StepTable({ process, flags, focus }: Props) {
                     className="cell-input"
                     aria-label="Technology"
                     value={step.technology}
-                    onChange={(e) =>
-                      updateStep(process.id, step.id, { technology: e.target.value })
-                    }
+                    onChange={(e) => patchStep(step, { technology: e.target.value })}
                     onKeyDown={(e) => onTextKeyDown(e, step)}
                   />
                 </Td>
@@ -379,7 +430,7 @@ export function StepTable({ process, flags, focus }: Props) {
                   <ContributorsCombobox
                     value={step.contributorIds}
                     parties={parties}
-                    onChange={(ids) => updateStep(process.id, step.id, { contributorIds: ids })}
+                    onChange={(ids) => patchStep(step, { contributorIds: ids })}
                     onCreateParty={createParty}
                     ariaLabel="Contributors"
                   />
@@ -398,7 +449,7 @@ export function StepTable({ process, flags, focus }: Props) {
                     className="cell-input"
                     aria-label="Notes"
                     value={step.notes}
-                    onChange={(e) => updateStep(process.id, step.id, { notes: e.target.value })}
+                    onChange={(e) => patchStep(step, { notes: e.target.value })}
                     onKeyDown={(e) => onTextKeyDown(e, step)}
                   />
                 </Td>
@@ -529,7 +580,7 @@ function RowMenu({
             </>
           ) : (
             <div className="px-2 py-1.5 text-xs text-[var(--text-muted)]">
-              Only {teamName} uses this step, so edits here affect no other team.
+              Only {teamName} uses this step, so edits affect no other team.
             </div>
           )}
           <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />

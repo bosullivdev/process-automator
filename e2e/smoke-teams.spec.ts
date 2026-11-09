@@ -171,20 +171,28 @@ test("build Team A, start Team B from it, edit B's route alone, see coloured arr
   await expect(map.locator("[data-node-id]")).toHaveCount(3);
   await expect(map.locator("[data-edge-id]")).toHaveCount(2);
 
-  // Give Team B its own copy of Review.
-  await page.getByRole("button", { name: "Team actions for step 2" }).click();
-  await page.getByRole("menuitem", { name: /Make a Team B copy/ }).click();
-  // The copy replaces the shared step in Team B's view; Team A keeps the original.
+  // Changing the owner of the shared Review step gives Team B its own copy; Team A keeps the original.
+  await page.getByLabel("Owner").nth(1).fill("Legal");
+  await page.keyboard.press("Enter");
   await expect(page.getByRole("status").last()).toContainText("Team B's own copy");
   await expect(page.getByLabel("Step name")).toHaveCount(3);
   await expect(page.getByLabel("Step name").nth(1)).toHaveValue("Review");
+  await expect(page.getByLabel("Owner").nth(1)).toHaveValue("Legal");
   await expect(page.getByLabel("Teams").nth(1).locator("..")).toContainText("Team B");
+  // Typing into the copy's name keeps editing the copy, not a new fork.
+  await page.getByLabel("Step name").nth(1).fill("Review (B)");
+  await expect(page.getByLabel("Step name")).toHaveCount(3);
+  await expect(map.locator("[data-lane-id]")).toHaveCount(2);
 
   // Everything together: Team A still has four steps; team-specific arrows are coloured.
   await page.getByTestId("team-menu").click();
   await page.getByRole("menuitemradio", { name: "All teams" }).click();
   await expect(map.locator("[data-node-id]")).toHaveCount(5);
   await expect(map.locator("[data-edge-id][data-team-lines]")).toHaveCount(5);
+  // Team A's Review is untouched: still unassigned, still named Review.
+  await expect(page.getByLabel("Step name").nth(1)).toHaveValue("Review");
+  await expect(page.getByLabel("Owner").nth(1)).toHaveValue("");
+  await expect(page.getByLabel("Step name").nth(2)).toHaveValue("Review (B)");
   await page.getByTestId("team-menu").click();
   await page.getByRole("menuitemradio", { name: "Team A" }).click();
   await page.getByTestId("team-menu").click();

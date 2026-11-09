@@ -76,6 +76,22 @@ function applyType(s: Step, type: StepType): void {
   if (type !== "task") delete s.isSubProcess;
 }
 
+/** Apply a Type dropdown choice to a step in place. */
+export function applyVariant(s: Step, variant: StepVariant): void {
+  const [type, kind] = variant.split(":") as [StepType, string | undefined];
+  applyType(s, type);
+  if (type === "start") {
+    if (kind === "message" || kind === "timer") s.startKind = kind;
+    else delete s.startKind;
+  } else if (type === "end") {
+    if (kind === "terminate") s.endKind = "terminate";
+    else delete s.endKind;
+  } else if (type === "task") {
+    if (kind === "sub") s.isSubProcess = true;
+    else delete s.isSubProcess;
+  }
+}
+
 /** The undoable part of the state. */
 export interface DocState {
   meta: Workspace["meta"];
@@ -113,8 +129,17 @@ export interface StoreState extends DocState {
   setStepNextForTeam: (processId: string, stepId: string, next: NextLink[], teamId: string) => void;
   /** Take a step out of a team's route, reconnecting the team's arrows around it. */
   removeStepFromTeam: (processId: string, stepId: string, teamId: string) => void;
-  /** Give a team its own copy of a shared step. Returns the copy's id. */
-  forkStepForTeam: (processId: string, stepId: string, teamId: string) => string | null;
+  /**
+   * Give a team its own copy of a shared step, optionally editing the copy in
+   * the same undoable step. Returns the copy's id, or null when the step was
+   * already the team's alone.
+   */
+  forkStepForTeam: (
+    processId: string,
+    stepId: string,
+    teamId: string,
+    apply?: (copy: Step) => void,
+  ) => string | null;
   removeLink: (processId: string, stepId: string, targetId: string) => void;
   deleteStep: (processId: string, stepId: string) => void;
   duplicateStep: (processId: string, stepId: string) => string | null;
@@ -258,19 +283,7 @@ export const useStore = create<StoreState>()(
         setStepVariant: (processId, stepId, variant) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
-            if (!s) return;
-            const [type, kind] = variant.split(":") as [StepType, string | undefined];
-            applyType(s, type);
-            if (type === "start") {
-              if (kind === "message" || kind === "timer") s.startKind = kind;
-              else delete s.startKind;
-            } else if (type === "end") {
-              if (kind === "terminate") s.endKind = "terminate";
-              else delete s.endKind;
-            } else if (type === "task") {
-              if (kind === "sub") s.isSubProcess = true;
-              else delete s.isSubProcess;
-            }
+            if (s) applyVariant(s, variant);
           }),
         setStepOwner: (processId, stepId, partyId) =>
           edit((d) => {
@@ -329,7 +342,7 @@ export const useStore = create<StoreState>()(
               d.teams.map((t) => t.id),
             );
           }),
-        forkStepForTeam: (processId, stepId, teamId) => {
+        forkStepForTeam: (processId, stepId, teamId, apply) => {
           let copyId: string | null = null;
           edit((d) => {
             const idx = d.processes.findIndex((p) => p.id === processId);
@@ -342,6 +355,11 @@ export const useStore = create<StoreState>()(
             );
             d.processes[idx] = r.process;
             copyId = r.copyId;
+            const copy = copyId ? r.process.steps.find((s) => s.id === copyId) : undefined;
+            if (copy && apply) {
+              apply(copy);
+              ensureLane(r.process, copy.ownerId);
+            }
           });
           return copyId;
         },
