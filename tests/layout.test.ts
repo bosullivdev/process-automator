@@ -131,8 +131,95 @@ describe("layout", () => {
   });
 });
 
+/** Orthogonal polyline segments of two edges that cross each other. */
+function crossings(a: { x: number; y: number }[], b: { x: number; y: number }[]): number {
+  const segs = (pts: { x: number; y: number }[]) =>
+    pts.slice(1).map((p, i) => ({ p: pts[i], q: p }));
+  let n = 0;
+  for (const s of segs(a)) {
+    for (const t of segs(b)) {
+      const sV = Math.abs(s.p.x - s.q.x) < 0.01;
+      const tV = Math.abs(t.p.x - t.q.x) < 0.01;
+      if (sV === tV) continue;
+      const v = sV ? s : t;
+      const h = sV ? t : s;
+      const x = v.p.x;
+      const y = h.p.y;
+      const within = (c: number, lo: number, hi: number) =>
+        c > Math.min(lo, hi) + 0.01 && c < Math.max(lo, hi) - 0.01;
+      if (within(x, h.p.x, h.q.x) && within(y, v.p.y, v.q.y)) n++;
+    }
+  }
+  return n;
+}
+
 describe("decision side exits", () => {
-  it("sends the nearest turning outcome out of the shape's side and moves the name away", async () => {
+  it("does not cross outcomes that fan out to stacked steps in another lane", async () => {
+    // "Mayo or ham?" in the lower lane, Eat and Bin stacked in the upper lane:
+    // the arrow to the farther step takes the side exit and the nearer one
+    // turns in the channel, so neither crosses the other.
+    const me = party("Me", 0);
+    const kitchen = party("Kitchen", 1);
+    const proc = process(
+      [
+        step({
+          id: "buy",
+          displayNo: 1,
+          type: "start",
+          ownerId: me.id,
+          next: [{ targetId: "make" }],
+        }),
+        step({ id: "make", displayNo: 2, ownerId: kitchen.id, next: [{ targetId: "which" }] }),
+        step({
+          id: "which",
+          displayNo: 3,
+          type: "decision",
+          ownerId: kitchen.id,
+          next: [
+            { targetId: "bin", label: "Mayo" },
+            { targetId: "eat", label: "Ham" },
+          ],
+        }),
+        step({ id: "eat", displayNo: 4, type: "end", ownerId: me.id }),
+        step({ id: "bin", displayNo: 5, type: "end", ownerId: me.id }),
+      ],
+      { laneOrder: [me.id, kitchen.id] },
+    );
+    for (const orientation of ["horizontal", "vertical"] as const) {
+      const graph = buildLayoutGraph(proc, [me, kitchen], "simple", orientation);
+      const r = await layoutGraph(graph, orientation, elk);
+      const mayo = r.edges.find((e) => e.id === "which->bin")!;
+      const ham = r.edges.find((e) => e.id === "which->eat")!;
+      expect(crossings(mayo.points, ham.points), orientation).toBe(0);
+    }
+  });
+
+  it("nests channel verticals so a fan-out downwards does not cross itself", async () => {
+    const ops = party("Ops", 0);
+    const proc = process(
+      [
+        step({ id: "s", displayNo: 1, type: "start", ownerId: ops.id, next: [{ targetId: "t" }] }),
+        step({
+          id: "t",
+          displayNo: 2,
+          ownerId: ops.id,
+          next: [{ targetId: "a" }, { targetId: "b" }, { targetId: "c" }],
+        }),
+        step({ id: "a", displayNo: 3, type: "end", ownerId: ops.id }),
+        step({ id: "b", displayNo: 4, type: "end", ownerId: ops.id }),
+        step({ id: "c", displayNo: 5, type: "end", ownerId: ops.id }),
+      ],
+      { laneOrder: [ops.id] },
+    );
+    const graph = buildLayoutGraph(proc, [ops], "simple", "horizontal");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const out = ["t->a", "t->b", "t->c"].map((id) => r.edges.find((e) => e.id === id)!);
+    for (let i = 0; i < out.length; i++)
+      for (let j = i + 1; j < out.length; j++)
+        expect(crossings(out[i].points, out[j].points), `${out[i].id} x ${out[j].id}`).toBe(0);
+  });
+
+  it("sends the farthest turning outcome out of the shape's side and moves the name away", async () => {
     const sales = party("Sales", 0);
     const ops = party("Ops", 1);
     const proc = process(

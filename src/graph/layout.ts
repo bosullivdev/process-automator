@@ -283,10 +283,12 @@ export async function layoutGraph(
   }
 
   /*
-   * Side exits. A node with several outgoing edges sends the one that turns
-   * nearest out of the top or bottom of its shape instead of its front, so
-   * outcomes are told apart by where they leave. Only one side exit per node;
-   * its name then moves to the other side (labelSide).
+   * Side exits. A node with several outgoing edges sends the one that travels
+   * farthest across the lanes out of the top or bottom of its shape instead of
+   * its front, so outcomes are told apart by where they leave. The farthest
+   * edge takes the innermost vertical so that it never crosses the horizontal
+   * runs of the nearer edges, which turn in the channel beyond it. Only one
+   * side exit per node; its name then moves to the other side (labelSide).
    */
   const labelSide = new Map<string, LabelSide>();
   const defaultSide: LabelSide = orientation === "horizontal" ? "below" : "right";
@@ -305,7 +307,7 @@ export async function layoutGraph(
         return { p, goal, dist: Math.abs(goal - p.sc) };
       })
       .filter(({ goal, p }) => Math.abs(goal - p.sc) > s.aLHalf + 4)
-      .sort((a, b) => a.dist - b.dist || a.p.e.id.localeCompare(b.p.e.id));
+      .sort((a, b) => b.dist - a.dist || a.p.e.id.localeCompare(b.p.e.id));
     for (const { p, goal } of candidates) {
       const down = goal > p.sc;
       const edgeL = p.sc + (down ? s.aLHalf : -s.aLHalf);
@@ -321,19 +323,36 @@ export async function layoutGraph(
     }
   }
 
-  // Assign channel positions: spread the segments in each gap by their row order.
-  type Seg = { edgeId: string; gap: number; key: number; which: "a" | "b" };
+  /*
+   * Channel positions. Each gap holds the verticals of edges leaving the layer
+   * before it ("a", vertical then horizontal on to the target) and of edges
+   * arriving in the layer after it ("b", horizontal then vertical). Verticals
+   * nest by how far they travel across the lanes: an "a" vertical that spans
+   * more rows sits nearer the source column, a "b" vertical that spans more
+   * rows sits nearer the target column, so a long vertical never cuts across
+   * the horizontal run of a shorter edge turning off inside its span.
+   */
+  type Seg = { edgeId: string; gap: number; span: number; which: "a" | "b" };
   const segs: Seg[] = [];
   for (const p of plans) {
-    if (p.needA) segs.push({ edgeId: p.e.id, gap: p.s.layer, key: p.sc * 1000 + p.tc, which: "a" });
-    if (p.needB)
-      segs.push({ edgeId: p.e.id, gap: p.t.layer - 1, key: p.tc * 1000 + p.sc, which: "b" });
+    if (p.needA) {
+      const span = Math.abs((p.kind === "gutter" ? p.rail : p.tc) - p.sc);
+      segs.push({ edgeId: p.e.id, gap: p.s.layer, span, which: "a" });
+    }
+    if (p.needB) {
+      const span = Math.abs(p.tc - (p.kind === "gutter" ? p.rail : p.sc));
+      segs.push({ edgeId: p.e.id, gap: p.t.layer - 1, span, which: "b" });
+    }
   }
   const channelF = new Map<string, number>();
   const byGap = new Map<number, Seg[]>();
   for (const sg of segs) byGap.set(sg.gap, [...(byGap.get(sg.gap) ?? []), sg]);
   for (const [g, list] of byGap) {
-    list.sort((a, b) => a.key - b.key || a.edgeId.localeCompare(b.edgeId));
+    list.sort((a, b) => {
+      if (a.which !== b.which) return a.which === "a" ? -1 : 1;
+      const bySpan = a.which === "a" ? b.span - a.span : a.span - b.span;
+      return bySpan || a.edgeId.localeCompare(b.edgeId);
+    });
     const [g0, g1] = gapRange(g);
     list.forEach((sg, i) => {
       channelF.set(`${sg.edgeId}:${sg.which}`, g0 + ((g1 - g0) * (i + 1)) / (list.length + 1));
