@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Party, Process, Team } from "../../model/types";
 import type { Flag } from "../../model/validate";
-import { teamNames as namesOf, type TeamFocus } from "../../model/team";
+import { linkTeams, stepInTeam, teamNames as namesOf, type TeamFocus } from "../../model/team";
 import type { LayoutGraph, LayoutResult } from "../../graph/layout-types";
 import { UNASSIGNED_LANE } from "../../graph/layout-types";
 import {
@@ -13,7 +13,7 @@ import {
 import { useResolvedTheme } from "../../hooks/useTheme";
 import { usePanZoom } from "../../hooks/usePanZoom";
 import { MapNode, type NodeColours } from "./MapNode";
-import { MapEdge } from "./MapEdge";
+import { MapEdge, type EdgeLine } from "./MapEdge";
 
 interface Props {
   process: Process;
@@ -156,6 +156,44 @@ export function MapView({
 
   const empty = !layout || layout.nodes.length === 0;
   const fade = focus?.mode === "highlight" ? focus.view : null;
+  const teamFill = (t: Team) => resolveColour(t.colourIndex, theme).fill;
+  const focusTeam = focus ? teams.find((t) => t.id === focus.teamId) : undefined;
+  const neutral: EdgeLine[] = [{ stroke: "var(--edge)", marker: "url(#arrow)" }];
+  const teamLine = (t: Team): EdgeLine => ({
+    stroke: teamFill(t),
+    marker: `url(#arrow-team-${t.id})`,
+  });
+  /** The teams that travel an edge; null when every team does (or there are no teams). */
+  const edgeTeams = (e: { sourceStepId: string; targetStepId: string }): Team[] | null => {
+    if (teams.length === 0) return null;
+    const src = stepById.get(e.sourceStepId);
+    if (!src) return null;
+    let used: Team[];
+    if (e.sourceStepId === e.targetStepId) used = teams.filter((t) => stepInTeam(src, t.id));
+    else {
+      const tgt = stepById.get(e.targetStepId);
+      const link = src.next.find((l) => l.targetId === e.targetStepId);
+      if (!tgt || !link) return null;
+      used = linkTeams(src, link, tgt, teams);
+    }
+    return used.length === teams.length ? null : used;
+  };
+  const edgeStyle = (
+    e: { sourceStepId: string; targetStepId: string },
+    selected: boolean,
+    dimmed: boolean,
+  ): { lines: EdgeLine[]; width: number } => {
+    if (selected)
+      return {
+        lines: [{ stroke: "var(--color-accent)", marker: "url(#arrow-selected)" }],
+        width: 2.5,
+      };
+    if (fade && focusTeam && !dimmed) return { lines: [teamLine(focusTeam)], width: 2 };
+    const used = edgeTeams(e);
+    return used && used.length
+      ? { lines: used.map(teamLine), width: 1.5 }
+      : { lines: neutral, width: 1.5 };
+  };
   const edgeDimmed = (e: { sourceStepId: string; targetStepId: string }) =>
     !!fade &&
     !(
@@ -227,6 +265,20 @@ export function MapView({
           >
             <path d="M0,0 L10,5 L0,10 z" fill="var(--color-accent)" />
           </marker>
+          {teams.map((t) => (
+            <marker
+              key={t.id}
+              id={`arrow-team-${t.id}`}
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M0,0 L10,5 L0,10 z" fill={teamFill(t)} />
+            </marker>
+          ))}
           <pattern
             id="lane-stripe"
             patternUnits="userSpaceOnUse"
@@ -354,6 +406,8 @@ export function MapView({
             const selected =
               !!selectedStepId &&
               (e.sourceStepId === selectedStepId || e.targetStepId === selectedStepId);
+            const dimmed = edgeDimmed(e);
+            const style = edgeStyle(e, selected, dimmed);
             return (
               <MapEdge
                 key={route.id}
@@ -361,7 +415,9 @@ export function MapView({
                 route={route}
                 selected={selected}
                 mode={mode}
-                dimmed={edgeDimmed(e)}
+                dimmed={dimmed}
+                lines={style.lines}
+                width={style.width}
               />
             );
           })}
@@ -392,6 +448,11 @@ export function MapView({
                 selected={!!step && step.id === selectedStepId}
                 flags={step ? flags.get(step.id) : undefined}
                 teamNames={step ? namesOf(step.teamIds, teams) : []}
+                teamColour={
+                  step && step.teamIds.length === 1
+                    ? teams.filter((t) => t.id === step.teamIds[0]).map(teamFill)[0]
+                    : undefined
+                }
                 dimmed={!!fade && !fade.stepIds.has(ln.stepId)}
                 onSelect={(id) => {
                   selectionFromMap.current = true;

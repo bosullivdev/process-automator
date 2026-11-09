@@ -32,6 +32,8 @@ interface Props {
   teamNames?: string[];
   /** Faded because another team's variant is highlighted. */
   dimmed?: boolean;
+  /** Colour of the team pill's border when the step belongs to exactly one team. */
+  teamColour?: string;
 }
 
 const LINE_H = 14;
@@ -47,6 +49,7 @@ export function MapNode({
   onSelect,
   teamNames = [],
   dimmed = false,
+  teamColour,
 }: Props) {
   const { kind, text } = layoutNode;
   // The shape sits inside the node box at (cx, cy); outside labels use the rest.
@@ -303,8 +306,8 @@ export function MapNode({
             height={16}
             rx={4}
             fill="var(--surface)"
-            stroke="var(--border-strong)"
-            strokeWidth={1}
+            stroke={teamColour ?? "var(--border-strong)"}
+            strokeWidth={teamColour ? 1.5 : 1}
             strokeDasharray="3 2"
           />
           <text

@@ -6,7 +6,8 @@ import { stepVariant, undo, useStore, type StepVariant } from "../../store/works
 import { OwnerCombobox } from "./OwnerCombobox";
 import { ContributorsCombobox } from "./ContributorsCombobox";
 import { TeamsCombobox } from "./TeamsCombobox";
-import type { TeamFocus } from "../../model/team";
+import { linkInTeam, scopeWithout, type TeamFocus } from "../../model/team";
+import { Popover } from "../ui/Popover";
 import { NextPicker } from "./NextPicker";
 import { Tooltip } from "../ui/Tooltip";
 import { toast } from "../ui/toast";
@@ -24,6 +25,31 @@ export function StepTable({ process, flags, focus }: Props) {
   const teams = useStore((s) => s.teams);
   const setStepTeams = useStore((s) => s.setStepTeams);
   const addTeam = useStore((s) => s.addTeam);
+  const setStepNextForTeam = useStore((s) => s.setStepNextForTeam);
+  const removeStepFromTeam = useStore((s) => s.removeStepFromTeam);
+  const forkStepForTeam = useStore((s) => s.forkStepForTeam);
+  // In "only this team" mode every edit to links and rows affects that team's route alone.
+  const isolate = focus?.mode === "isolate" ? focus : null;
+  const isolateTeam = isolate ? teams.find((t) => t.id === isolate.teamId) : undefined;
+  const allTeamIds = useMemo(() => teams.map((t) => t.id), [teams]);
+  const routeSteps = useMemo(
+    () => (isolate ? process.steps.filter((s) => isolate.view.stepIds.has(s.id)) : process.steps),
+    [isolate, process.steps],
+  );
+  /** The links of a step as the isolated team sees them. */
+  const visibleNext = (step: Step): NextLink[] =>
+    isolate
+      ? step.next.filter(
+          (l) => linkInTeam(l, isolate.teamId) && isolate.view.stepIds.has(l.targetId),
+        )
+      : step.next;
+  const changeNext = (step: Step, next: NextLink[]) =>
+    isolate
+      ? setStepNextForTeam(process.id, step.id, next, isolate.teamId)
+      : setStepNext(process.id, step.id, next);
+  /** Whether other teams also use this step, so the isolated team can leave it rather than delete it. */
+  const sharedWithOthers = (step: Step) =>
+    !!isolate && scopeWithout(step.teamIds, isolate.teamId, allTeamIds) !== null;
   const selectedStepId = useStore((s) => s.selectedStepId);
   const selectStep = useStore((s) => s.selectStep);
   const addStep = useStore((s) => s.addStep);
@@ -102,6 +128,32 @@ export function StepTable({ process, flags, focus }: Props) {
     [deleteStep, process.id, process.steps, restoreStep],
   );
 
+  /** Take the step off the isolated team's route; other teams keep it. */
+  const leaveTeam = (step: Step) => {
+    if (!isolate || !isolateTeam) return;
+    removeStepFromTeam(process.id, step.id, isolate.teamId);
+    toast(
+      `Step ${step.displayNo} is no longer on ${isolateTeam.name}'s route. Other teams keep it.`,
+      { label: "Undo", onClick: () => undo() },
+    );
+  };
+
+  /** Give the isolated team its own copy of a shared step. */
+  const forkForTeam = (step: Step) => {
+    if (!isolate || !isolateTeam) return;
+    const id = forkStepForTeam(process.id, step.id, isolate.teamId);
+    if (!id) return;
+    pendingFocus.current = id;
+    selectStep(id);
+    toast(`Step ${step.displayNo} is now ${isolateTeam.name}'s own copy; edit it freely.`, {
+      label: "Undo",
+      onClick: () => undo(),
+    });
+  };
+
+  /** Delete, or in an isolated view with other teams on the step, just leave the route. */
+  const removeOrLeave = (step: Step) => (sharedWithOthers(step) ? leaveTeam(step) : remove(step));
+
   const onRowKeyDown = (e: React.KeyboardEvent, step: Step) => {
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === "d") {
@@ -124,7 +176,7 @@ export function StepTable({ process, flags, focus }: Props) {
   const onNoKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, step: Step) => {
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-      remove(step);
+      removeOrLeave(step);
     }
   };
 
@@ -299,16 +351,16 @@ export function StepTable({ process, flags, focus }: Props) {
                 </Td>
                 <Td>
                   <NextPicker
-                    step={step}
-                    steps={process.steps}
+                    step={isolate ? { ...step, next: visibleNext(step) } : step}
+                    steps={routeSteps}
                     teams={teams}
                     brokenTargets={brokenByStep.get(step.id) ?? emptySet}
-                    onChange={(next: NextLink[]) => setStepNext(process.id, step.id, next)}
+                    onChange={(next: NextLink[]) => changeNext(step, next)}
                     onCreateStep={() => {
                       const id = addAfter(step.id, { ownerId: step.ownerId });
                       const link: NextLink =
                         step.type === "decision" ? { targetId: id, label: "" } : { targetId: id };
-                      setStepNext(process.id, step.id, [...step.next, link]);
+                      changeNext(step, [...visibleNext(step), link]);
                     }}
                   />
                 </Td>
@@ -351,14 +403,35 @@ export function StepTable({ process, flags, focus }: Props) {
                   />
                 </Td>
                 <Td>
-                  <button
-                    type="button"
-                    aria-label={`Delete step ${step.displayNo}`}
-                    className="btn btn-ghost btn-icon h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                    onClick={() => remove(step)}
-                  >
-                    ×
-                  </button>
+                  <div className="flex items-center justify-end gap-0.5 pr-1">
+                    {isolate && isolateTeam && (
+                      <RowMenu
+                        step={step}
+                        teamName={isolateTeam.name}
+                        shared={sharedWithOthers(step)}
+                        onLeave={() => leaveTeam(step)}
+                        onFork={() => forkForTeam(step)}
+                        onDelete={() => remove(step)}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      aria-label={
+                        isolate && isolateTeam && sharedWithOthers(step)
+                          ? `Remove step ${step.displayNo} from ${isolateTeam.name}'s route`
+                          : `Delete step ${step.displayNo}`
+                      }
+                      title={
+                        isolate && isolateTeam && sharedWithOthers(step)
+                          ? `Not for ${isolateTeam.name}: other teams keep this step`
+                          : "Delete step"
+                      }
+                      className="btn btn-ghost btn-icon h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={() => removeOrLeave(step)}
+                    >
+                      ×
+                    </button>
+                  </div>
                 </Td>
               </tr>
             );
@@ -394,6 +467,78 @@ export function StepTable({ process, flags, focus }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+/** Per-row actions available while one team's route is shown alone. */
+function RowMenu({
+  step,
+  teamName,
+  shared,
+  onLeave,
+  onFork,
+  onDelete,
+}: {
+  step: Step;
+  teamName: string;
+  shared: boolean;
+  onLeave: () => void;
+  onFork: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const pick = (fn: () => void) => {
+    setOpen(false);
+    fn();
+  };
+  return (
+    <>
+      <button
+        ref={setAnchor}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Team actions for step ${step.displayNo}`}
+        title={`What ${teamName} does with this step`}
+        className="btn btn-ghost btn-icon h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
+        onClick={() => setOpen((o) => !o)}
+      >
+        ⋯
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} width={260}>
+        <div role="menu" className="flex flex-col">
+          {shared ? (
+            <>
+              <button role="menuitem" className="menu-item" onClick={() => pick(onLeave)}>
+                <span className="flex flex-col leading-tight">
+                  <span>Not for {teamName}</span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    Skip this step; arrows reconnect around it
+                  </span>
+                </span>
+              </button>
+              <button role="menuitem" className="menu-item" onClick={() => pick(onFork)}>
+                <span className="flex flex-col leading-tight">
+                  <span>Make a {teamName} copy</span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {teamName} gets its own version to edit
+                  </span>
+                </span>
+              </button>
+            </>
+          ) : (
+            <div className="px-2 py-1.5 text-xs text-[var(--text-muted)]">
+              Only {teamName} uses this step, so edits here affect no other team.
+            </div>
+          )}
+          <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />
+          <button role="menuitem" className="menu-item" onClick={() => pick(onDelete)}>
+            Delete step for every team
+          </button>
+        </div>
+      </Popover>
+    </>
   );
 }
 

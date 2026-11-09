@@ -12,10 +12,15 @@ export interface Workspace {
   view: ViewSettings;
 }
 
-/** A team that runs its own variant of the processes. Teams are not lanes. */
+/**
+ * A team that runs its own variant of the processes. Teams are not lanes:
+ * their colour appears only on arrows and team pills, never on shapes or lane
+ * backgrounds.
+ */
 export interface Team {
   id: string;
   name: string;
+  colourIndex: number; // index into the same palette as parties, allocated among teams
 }
 
 export interface Party {

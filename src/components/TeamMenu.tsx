@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useStore } from "../store/workspace";
 import { Popover } from "./ui/Popover";
+import { PartySwatch } from "./ui/PartySwatch";
 
 interface Props {
   onManage: () => void;
@@ -35,6 +36,7 @@ export function TeamMenu({ onManage }: Props) {
         onClick={() => setOpen((o) => !o)}
         data-testid="team-menu"
       >
+        {current && <PartySwatch party={current} size={8} />}
         Team: {label}
       </button>
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} width={240}>
@@ -63,6 +65,7 @@ export function TeamMenu({ onManage }: Props) {
                 setOpen(false);
               }}
             >
+              <PartySwatch party={t} size={10} />
               <span className="truncate">{t.name}</span>
             </button>
           ))}

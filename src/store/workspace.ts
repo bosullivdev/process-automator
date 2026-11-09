@@ -18,9 +18,14 @@ import {
 } from "../model/party";
 import { assignOwners as assignOwnersPure } from "../model/share";
 import {
+  applyScopedNext,
+  copyTeamRoute as copyTeamRoutePure,
   createTeam,
   deleteTeam as deleteTeamPure,
+  forkStepForTeam as forkStepForTeamPure,
+  removeStepFromTeam as removeStepFromTeamPure,
   renameTeam as renameTeamPure,
+  stepInTeam,
 } from "../model/team";
 import {
   createEmptyWorkspace,
@@ -104,6 +109,12 @@ export interface StoreState extends DocState {
   setStepNext: (processId: string, stepId: string, next: NextLink[]) => void;
   /** Scope a step to some teams; an empty list means every team. */
   setStepTeams: (processId: string, stepId: string, teamIds: string[]) => void;
+  /** Apply a Next edit made in one team's isolated view; other teams' links are untouched. */
+  setStepNextForTeam: (processId: string, stepId: string, next: NextLink[], teamId: string) => void;
+  /** Take a step out of a team's route, reconnecting the team's arrows around it. */
+  removeStepFromTeam: (processId: string, stepId: string, teamId: string) => void;
+  /** Give a team its own copy of a shared step. Returns the copy's id. */
+  forkStepForTeam: (processId: string, stepId: string, teamId: string) => string | null;
   removeLink: (processId: string, stepId: string, targetId: string) => void;
   deleteStep: (processId: string, stepId: string) => void;
   duplicateStep: (processId: string, stepId: string) => string | null;
@@ -117,8 +128,11 @@ export interface StoreState extends DocState {
   deleteParty: (partyId: string) => void;
   setPartyOverride: (partyId: string, colour: string | undefined) => void;
 
-  addTeam: (name: string) => string;
+  /** Create a team; with `from`, it starts with that team's route in the given process. */
+  addTeam: (name: string, from?: { teamId: string; processId: string }) => string;
   renameTeam: (teamId: string, name: string) => void;
+  /** Give `to` every step and link `from` uses in this process. */
+  copyTeamRoute: (processId: string, from: string, to: string) => void;
   /** No-op while the team is referenced by any step or link. */
   deleteTeam: (teamId: string) => void;
 
@@ -288,6 +302,49 @@ export const useStore = create<StoreState>()(
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
             if (s) s.teamIds = [...new Set(teamIds)];
           }),
+        setStepNextForTeam: (processId, stepId, next, teamId) =>
+          edit((d) => {
+            const proc = findProcess(d, processId);
+            const s = proc?.steps.find((x) => x.id === stepId);
+            if (!proc || !s) return;
+            const inRoute = new Set(
+              proc.steps.filter((x) => stepInTeam(x, teamId)).map((x) => x.id),
+            );
+            s.next = applyScopedNext(
+              s,
+              next.filter((l) => l.targetId !== stepId),
+              teamId,
+              d.teams.map((t) => t.id),
+              inRoute,
+            );
+          }),
+        removeStepFromTeam: (processId, stepId, teamId) =>
+          edit((d) => {
+            const idx = d.processes.findIndex((p) => p.id === processId);
+            if (idx < 0) return;
+            d.processes[idx] = removeStepFromTeamPure(
+              d.processes[idx],
+              stepId,
+              teamId,
+              d.teams.map((t) => t.id),
+            );
+          }),
+        forkStepForTeam: (processId, stepId, teamId) => {
+          let copyId: string | null = null;
+          edit((d) => {
+            const idx = d.processes.findIndex((p) => p.id === processId);
+            if (idx < 0) return;
+            const r = forkStepForTeamPure(
+              d.processes[idx],
+              stepId,
+              teamId,
+              d.teams.map((t) => t.id),
+            );
+            d.processes[idx] = r.process;
+            copyId = r.copyId;
+          });
+          return copyId;
+        },
         removeLink: (processId, stepId, targetId) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);
@@ -372,13 +429,33 @@ export const useStore = create<StoreState>()(
             else delete p.colourOverride;
           }),
 
-        addTeam: (name) => {
-          const team = createTeam(name);
+        addTeam: (name, from) => {
+          const team = createTeam(name, get().teams);
           edit((d) => {
             d.teams.push(team);
+            if (!from) return;
+            const idx = d.processes.findIndex((p) => p.id === from.processId);
+            if (idx < 0) return;
+            d.processes[idx] = copyTeamRoutePure(
+              d.processes[idx],
+              from.teamId,
+              team.id,
+              d.teams.map((t) => t.id),
+            );
           });
           return team.id;
         },
+        copyTeamRoute: (processId, from, to) =>
+          edit((d) => {
+            const idx = d.processes.findIndex((p) => p.id === processId);
+            if (idx < 0) return;
+            d.processes[idx] = copyTeamRoutePure(
+              d.processes[idx],
+              from,
+              to,
+              d.teams.map((t) => t.id),
+            );
+          }),
         renameTeam: (teamId, name) =>
           edit((d) => {
             d.teams = renameTeamPure(asWorkspace(d), teamId, name).teams;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Workspace } from "./types";
+import { nextColourIndex } from "./party";
 
 const nextLinkSchema = z.object({
   targetId: z.string(),
@@ -38,6 +39,8 @@ const partySchema = z.object({
 const teamSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
+  // Added after teams first shipped; a missing value is allocated on load.
+  colourIndex: z.number().int().nonnegative().optional(),
 });
 
 const processSchema = z.object({
@@ -119,5 +122,11 @@ export function migrate(json: unknown): Workspace {
   if (!result.success) {
     throw new MigrationError(`Workspace file is invalid: ${formatIssues(result.error.issues)}`);
   }
-  return result.data as Workspace;
+  const data = result.data;
+  // Teams saved before they had colours take the lowest free index, in file order.
+  const teams: Workspace["teams"] = [];
+  for (const t of data.teams) {
+    teams.push({ ...t, colourIndex: t.colourIndex ?? nextColourIndex(teams) });
+  }
+  return { ...data, teams } as Workspace;
 }

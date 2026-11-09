@@ -1,4 +1,5 @@
 import type { Team } from "../../model/types";
+import { PartySwatch } from "../ui/PartySwatch";
 import { TagCombobox } from "./TagCombobox";
 
 interface Props {
@@ -7,17 +8,6 @@ interface Props {
   onChange: (ids: string[]) => void;
   onCreateTeam: (name: string) => string;
   ariaLabel: string;
-}
-
-/** Small neutral tag glyph: teams are not coloured, colour belongs to lanes. */
-export function TeamGlyph({ size = 10 }: { size?: number }) {
-  return (
-    <span
-      aria-hidden
-      className="inline-block shrink-0 rounded-sm border"
-      style={{ width: size, height: size, borderColor: "var(--text-muted)" }}
-    />
-  );
 }
 
 /** Which teams a step applies to. Nothing selected means every team. */
@@ -30,7 +20,7 @@ export function TeamsCombobox({ value, teams, onChange, onCreateTeam, ariaLabel 
       onCreate={onCreateTeam}
       ariaLabel={ariaLabel}
       placeholder="All teams"
-      swatch={(t, size) => (t === null ? null : <TeamGlyph size={size} />)}
+      swatch={(t, size) => (t === null ? null : <PartySwatch party={t} size={size} />)}
       noun="teams"
       unknownLabel="Unknown team"
     />

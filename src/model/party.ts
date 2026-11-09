@@ -65,7 +65,7 @@ export function matchParty<T extends { name: string }>(
 }
 
 /** Lowest colourIndex not used by any party. Never fails: the palette repeats. */
-export function nextColourIndex(parties: readonly Party[]): number {
+export function nextColourIndex(parties: readonly { colourIndex: number }[]): number {
   const used = new Set(parties.map((p) => p.colourIndex));
   let i = 0;
   while (used.has(i)) i++;

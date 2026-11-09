@@ -70,7 +70,7 @@ describe("team defaults", () => {
     const proc = linearProcess(p.id);
     proc.steps[1].teamIds = ["t1"];
     proc.steps[1].next[0].teamIds = ["t1"];
-    const ws = { ...workspace([p], [proc]), teams: [{ id: "t1", name: "North" }] };
+    const ws = { ...workspace([p], [proc]), teams: [{ id: "t1", name: "North", colourIndex: 0 }] };
     const exported = JSON.stringify(ws, null, 2);
     expect(JSON.stringify(migrate(JSON.parse(exported)), null, 2)).toBe(exported);
   });

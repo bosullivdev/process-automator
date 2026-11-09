@@ -53,7 +53,15 @@ export function ExportMenu({ process, layout, focus }: Props) {
         toast("Add some steps before exporting the map.");
         return;
       }
-      const svg = await buildExportSvg({ process, parties, layout, theme, svgEl, teamLine });
+      const svg = await buildExportSvg({
+        process,
+        parties,
+        layout,
+        theme,
+        svgEl,
+        teamLine,
+        teams,
+      });
       const base = `${stem}-${datestamp()}`;
       if (kind === "svg") downloadBlob(svgToBlob(svg), `${base}.svg`);
       else if (kind === "png") downloadBlob(await svgToPng(svg, 2), `${base}.png`);

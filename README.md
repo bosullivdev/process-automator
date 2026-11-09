@@ -39,18 +39,24 @@ a static site.
   "Yes (Legal)" so labels stay unique. Teams in the group are removed from
   the contributors of the shared steps. One undo reverts the whole thing.
 - **Teams**: when several teams run their own variant of the same process,
-  build one master process and tag the differences. The Teams column scopes a
-  step to some teams; a step with no teams applies to every team. In the Next
-  picker each link has a team scope too, so one team can skip a step while
-  another goes through it, and a decision may repeat an outcome label as long
-  as the repeats are scoped to different teams. The header's Team menu then
-  highlights one team (everything the team does not use fades) or shows that
-  team only (the table, map, validation and exports all show the variant alone,
-  and a row added in that view belongs to the team). Steps scoped to a subset
-  of teams carry a small dashed pill naming them on the map. Teams are not
-  lanes: a "Management accountant" lane can hold steps from every team's
-  variant. Manage teams from the Team menu: rename anywhere, delete once no
-  step or link uses the team.
+  build one team's process in full, then open the Team menu, "Manage teams…",
+  add the first team and add the next one with "Start from" set to it. The new
+  team begins with an identical route inside the same master process, so shared
+  steps are drawn once. Switch the Team menu to the new team and "Only this
+  team": the table and map now show that team's route alone and every edit
+  changes only that route. Add a step and it belongs to the team; change a Next
+  link and only the team's arrows move; press × on a shared row (or "Not for
+  this team" in the row's ⋯ menu) and the team skips the step with its arrows
+  reconnected around it; "Make a copy" gives the team its own version of a
+  shared step when it does the step differently. Renaming or retyping a shared
+  step changes it for every team. With all teams showing, arrows every team
+  uses stay grey and arrows only some teams use are drawn in one coloured line
+  per team, side by side; steps used by a subset carry a dashed pill naming
+  them. "Highlight" fades everything a team does not use and draws its route
+  in its colour. Validation and exports follow the chosen team; the export
+  legend lists team colours. Teams are not lanes: a "Management accountant"
+  lane holds steps from every team's variant. A step or link with no team
+  tags applies to every team.
 - **Next**: a searchable multi-select of steps in the same process with a
   "Create new step" entry. Decisions get a label and a default toggle per
   outcome, and every link gets a team scope once teams exist.

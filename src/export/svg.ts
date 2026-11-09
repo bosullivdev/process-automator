@@ -1,4 +1,4 @@
-import type { Party, Process } from "../model/types";
+import type { Party, Process, Team } from "../model/types";
 import type { LayoutResult } from "../graph/layout-types";
 import { UNASSIGNED_LANE } from "../graph/layout-types";
 import { resolveColour, UNASSIGNED_COLOUR } from "../design/palette";
@@ -14,6 +14,8 @@ export interface ExportContext {
   svgEl: SVGSVGElement;
   /** Extra title-block line when one team's variant is shown, e.g. "Team: North (highlighted)". */
   teamLine?: string;
+  /** Team registry, for the arrow-colour legend when the process has team-specific parts. */
+  teams?: Team[];
 }
 
 const PAD = 32;
@@ -94,7 +96,7 @@ function esc(s: string): string {
 
 /** Build a standalone SVG document string for the active process map. */
 export async function buildExportSvg(ctx: ExportContext): Promise<string> {
-  const { process, parties, layout, theme, svgEl, teamLine } = ctx;
+  const { process, parties, layout, theme, svgEl, teamLine, teams = [] } = ctx;
   const vars = cssVars(theme);
   const fonts = await loadAllFonts();
 
@@ -130,8 +132,18 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
     lanes.push({ name: "Unassigned", colour: c.fill, text: c.text, initials: "" });
   }
 
+  // Teams get a legend only when something in the process is team-specific.
+  const scoped = process.steps.some(
+    (s) => s.teamIds.length > 0 || s.next.some((l) => l.teamIds && l.teamIds.length > 0),
+  );
+  const teamRows = scoped
+    ? teams.map((t) => ({ name: t.name, colour: resolveColour(t.colourIndex, theme).fill }))
+    : [];
+
   const width = Math.max(layout.width, 420) + PAD * 2;
-  const legendH = lanes.length ? LEGEND_ROW * lanes.length + 16 : 0;
+  const partiesH = lanes.length ? LEGEND_ROW * lanes.length + 16 : 0;
+  const teamsH = teamRows.length ? LEGEND_ROW * teamRows.length + 24 : 0;
+  const legendH = partiesH + teamsH;
   const height = PAD + TITLE_H + layout.height + 16 + legendH + PAD;
   const meta = [
     process.owner && `Owner: ${process.owner}`,
@@ -153,6 +165,18 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
         `<text x="26" y="9" dominant-baseline="central" font-size="12" fill="${vars["--text"]}">${esc(l.name)}</text></g>`,
     )
     .join("");
+  const teamsTop = PAD + TITLE_H + layout.height + partiesH + 10;
+  const teamLegend = teamRows.length
+    ? `<text x="${PAD}" y="${teamsTop}" font-size="11" font-weight="600" fill="${vars["--text-muted"]}">TEAMS (arrow colours)</text>` +
+      teamRows
+        .map(
+          (t, i) =>
+            `<g transform="translate(${PAD}, ${teamsTop + 14 + i * LEGEND_ROW})">` +
+            `<line x1="0" y1="9" x2="18" y2="9" stroke="${t.colour}" stroke-width="2.5"/>` +
+            `<text x="26" y="9" dominant-baseline="central" font-size="12" fill="${vars["--text"]}">${esc(t.name)}</text></g>`,
+        )
+        .join("")
+    : "";
 
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, system-ui, sans-serif">` +
@@ -169,6 +193,7 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
       ? `<text x="${PAD}" y="${PAD + TITLE_H + layout.height + 10}" font-size="11" font-weight="600" fill="${vars["--text-muted"]}">PARTIES</text>`
       : "") +
     legend +
+    teamLegend +
     `</svg>`;
   return replaceVars(svg, vars);
 }

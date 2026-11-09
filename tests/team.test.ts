@@ -16,8 +16,8 @@ import { processToCsv } from "../src/export/csv";
 import { party, process, step, workspace } from "./fixtures";
 import type { Team } from "../src/model/types";
 
-const north: Team = { id: "north", name: "North" };
-const south: Team = { id: "south", name: "South" };
+const north: Team = { id: "north", name: "North", colourIndex: 0 };
+const south: Team = { id: "south", name: "South", colourIndex: 1 };
 const teams = [north, south];
 
 /**
@@ -130,7 +130,7 @@ describe("team registry", () => {
     expect(renameTeam(ws, "north", "  North East ").teams[0].name).toBe("North East");
     expect(deleteTeam(ws, "north")).toBe(ws);
 
-    const spare = { ...ws, teams: [...teams, { id: "west", name: "West" }] };
+    const spare = { ...ws, teams: [...teams, { id: "west", name: "West", colourIndex: 2 }] };
     spare.view = { ...spare.view, highlightTeamId: "west" };
     const out = deleteTeam(spare, "west");
     expect(out.teams.map((t) => t.id)).toEqual(["north", "south"]);

@@ -77,7 +77,7 @@ describe("store undo/redo", () => {
     const north = s.addTeam("North");
     const a = useStore.getState().addStep(procId, { partial: { name: "Only north" } });
     useStore.getState().setStepTeams(procId, a, [north, north]);
-    expect(useStore.getState().teams).toEqual([{ id: north, name: "North" }]);
+    expect(useStore.getState().teams).toEqual([{ id: north, name: "North", colourIndex: 0 }]);
     expect(useStore.getState().processes[0].steps[0].teamIds).toEqual([north]);
 
     useStore.getState().renameTeam(north, " North East ");

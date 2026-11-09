@@ -32,7 +32,7 @@ export const COLUMNS: readonly ColumnDef[] = [
   { key: "contributors", label: "Contributors", width: 160, min: 100 },
   { key: "teams", label: "Teams", width: 140, min: 90 },
   { key: "notes", label: "Notes", width: 200, min: 100 },
-  { key: "actions", label: "", width: 36, min: 36, fixed: true },
+  { key: "actions", label: "", width: 64, min: 64, fixed: true },
 ];
 
 export type ColumnWidths = Record<ColumnKey, number>;

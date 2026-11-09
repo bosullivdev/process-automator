@@ -3,24 +3,34 @@ import { createPortal } from "react-dom";
 import type { Team } from "../model/types";
 import { teamUsage } from "../model/team";
 import { useStore } from "../store/workspace";
-import { TeamGlyph } from "./table/TeamsCombobox";
+import { PartySwatch } from "./ui/PartySwatch";
+import { toast } from "./ui/toast";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-/** Side sheet for the team registry: add, rename, delete (blocked while referenced). */
+/**
+ * Side sheet for the team registry: add a team (optionally starting from
+ * another team's route in the active process), rename, copy a route, delete
+ * (blocked while referenced).
+ */
 export function TeamSheet({ open, onClose }: Props) {
   const teams = useStore((s) => s.teams);
   const processes = useStore((s) => s.processes);
+  const activeProcessId = useStore((s) => s.view.activeProcessId);
   const addTeam = useStore((s) => s.addTeam);
   const renameTeam = useStore((s) => s.renameTeam);
   const deleteTeam = useStore((s) => s.deleteTeam);
+  const copyTeamRoute = useStore((s) => s.copyTeamRoute);
   const [newName, setNewName] = useState("");
+  const [startFrom, setStartFrom] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [copying, setCopying] = useState<string | null>(null);
 
   const sorted = useMemo(() => [...teams].sort((a, b) => a.name.localeCompare(b.name)), [teams]);
+  const activeProcess = processes.find((p) => p.id === activeProcessId);
 
   if (!open) return null;
 
@@ -35,7 +45,7 @@ export function TeamSheet({ open, onClose }: Props) {
         data-team-id={t.id}
       >
         <div className="flex items-center gap-2">
-          <TeamGlyph size={12} />
+          <PartySwatch party={t} size={12} />
           <input
             className="cell-input h-7 flex-1 rounded px-1 font-medium"
             aria-label={`Rename ${t.name}`}
@@ -66,8 +76,17 @@ export function TeamSheet({ open, onClose }: Props) {
                       })`,
                   )
                   .join(", ")
-              : "Not used: every step applies to it"}
+              : "Follows every untagged step"}
           </span>
+          {teams.length > 1 && activeProcess && (
+            <button
+              className="btn h-6 px-2 text-xs"
+              aria-label={`Copy a route to ${t.name}`}
+              onClick={() => setCopying(copying === t.id ? null : t.id)}
+            >
+              Copy route…
+            </button>
+          )}
           <button
             className="btn h-6 px-2 text-xs"
             aria-label={`Delete ${t.name}`}
@@ -78,6 +97,34 @@ export function TeamSheet({ open, onClose }: Props) {
             Delete
           </button>
         </div>
+        {copying === t.id && activeProcess && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="shrink-0">In {activeProcess.name}, follow</span>
+            <select
+              className="input h-7 flex-1 text-xs"
+              aria-label={`Copy route to ${t.name} from`}
+              defaultValue=""
+              onChange={(e) => {
+                if (!e.target.value) return;
+                copyTeamRoute(activeProcess.id, e.target.value, t.id);
+                const from = teams.find((x) => x.id === e.target.value);
+                toast(
+                  `${t.name} now follows ${from?.name ?? "that team"}'s route in ${activeProcess.name}.`,
+                );
+                setCopying(null);
+              }}
+            >
+              <option value="">Choose a team…</option>
+              {teams
+                .filter((o) => o.id !== t.id)
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
         {deleting === t.id && referenced && (
           <div
             className="rounded-md p-2 text-xs"
@@ -100,7 +147,7 @@ export function TeamSheet({ open, onClose }: Props) {
     >
       <div className="flex-1" style={{ background: "rgba(0,0,0,0.25)" }} onClick={onClose} />
       <div
-        className="flex h-full w-[380px] max-w-full flex-col border-l shadow-xl"
+        className="flex h-full w-[400px] max-w-full flex-col border-l shadow-xl"
         style={{ background: "var(--surface)", borderColor: "var(--border)" }}
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
@@ -116,36 +163,61 @@ export function TeamSheet({ open, onClose }: Props) {
           </button>
         </div>
         <form
-          className="flex gap-2 border-b p-3"
+          className="flex flex-col gap-2 border-b p-3"
           style={{ borderColor: "var(--border)" }}
           onSubmit={(e) => {
             e.preventDefault();
             const v = newName.trim();
             if (!v) return;
-            addTeam(v);
+            const from =
+              startFrom && activeProcess
+                ? { teamId: startFrom, processId: activeProcess.id }
+                : undefined;
+            addTeam(v, from);
             setNewName("");
+            setStartFrom("");
           }}
         >
-          <input
-            className="input"
-            placeholder="New team name"
-            aria-label="New team name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <button className="btn btn-primary" type="submit">
-            Add
-          </button>
+          <div className="flex gap-2">
+            <input
+              className="input"
+              placeholder="New team name"
+              aria-label="New team name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+            <button className="btn btn-primary" type="submit">
+              Add
+            </button>
+          </div>
+          {teams.length > 0 && activeProcess && (
+            <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+              <span className="shrink-0">Start from</span>
+              <select
+                className="input h-7 flex-1 text-xs"
+                aria-label="Start the new team from"
+                value={startFrom}
+                onChange={(e) => setStartFrom(e.target.value)}
+              >
+                <option value="">Every untagged step</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}&apos;s route in {activeProcess.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </form>
         <div className="min-h-0 flex-1 overflow-auto p-3">
           <p className="mb-3 text-xs text-[var(--text-muted)]">
-            Teams are variants of a process, not lanes. A step or link with no teams applies to
-            every team; tag it to make it specific. Use the header's Team menu to highlight or
-            isolate one team's variant.
+            Build one team&apos;s process in full, then add the next team starting from it and edit
+            that team&apos;s route with the header&apos;s Team menu set to &quot;only this
+            team&quot;. Team colours appear on arrows the teams do not share. Teams are not lanes.
           </p>
           {teams.length === 0 && (
             <p className="text-sm text-[var(--text-muted)]">
-              No teams yet. Add one here or type a name in the table's Teams column.
+              No teams yet. Add one here or type a name in the table&apos;s Teams column.
             </p>
           )}
           {sorted.length > 0 && <ul className="flex flex-col gap-2">{sorted.map(row)}</ul>}
