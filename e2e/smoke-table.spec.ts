@@ -53,3 +53,29 @@ test("table keyboard flow", async ({ page }) => {
   await expect(page.getByLabel("Step name").first()).toHaveValue("Receive order");
   expect(errors).toEqual([]);
 });
+
+test("column widths resize by drag and keyboard, reset on double-click, and persist", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const col = page.locator("colgroup col").nth(1);
+  const handle = page.locator("th", { hasText: "Name" }).getByRole("separator");
+  const before = await col.evaluate((el) => parseFloat((el as HTMLElement).style.width));
+
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(col).toHaveCSS("width", `${before + 80}px`);
+
+  await handle.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(col).toHaveCSS("width", `${before + 80 - 16}px`);
+
+  await page.reload();
+  await expect(page.locator("colgroup col").nth(1)).toHaveCSS("width", `${before + 64}px`);
+
+  await page.locator("th", { hasText: "Name" }).getByRole("separator").dblclick();
+  await expect(page.locator("colgroup col").nth(1)).toHaveCSS("width", `${before}px`);
+});

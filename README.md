@@ -17,6 +17,10 @@ a static site.
   single choice. "Sort by flow" reorders the rows to follow the process from
   its start, one branch at a time, which is handy before reading or exporting
   the table; it changes nothing on the map and can be undone.
+- **Columns**: drag the handle on a header's right edge to resize it, or focus the
+  handle and use the arrow keys; double-click (or Enter) resets it. Widths are
+  remembered in this browser, not in the workspace file. Notes stretches to
+  fill whatever width is left.
 - **Keyboard**: Enter adds a row below; Tab moves across cells; Escape closes
   pickers; Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z undo and redo; Cmd/Ctrl+D
   duplicates the row (everything except Next); Delete on the No cell deletes

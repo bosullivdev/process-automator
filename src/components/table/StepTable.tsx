@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NextLink, Process, Step } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import { worstSeverity } from "../../model/validate";
@@ -11,6 +11,7 @@ import { NextPicker } from "./NextPicker";
 import { Tooltip } from "../ui/Tooltip";
 import { toast } from "../ui/toast";
 import { readingOrder } from "../../graph/reading-order";
+import { COLUMNS, useColumnWidths, type ColumnKey } from "./useColumnWidths";
 
 interface Props {
   process: Process;
@@ -41,6 +42,20 @@ export function StepTable({ process, flags, focus }: Props) {
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const pendingFocus = useRef<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  const { widths, setWidth, resetWidth } = useColumnWidths();
+  // The Notes column stretches so the table fills the pane when the others are narrow.
+  const [paneWidth, setPaneWidth] = useState(0);
+  useEffect(() => {
+    const el = tableRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => setPaneWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const fixedTotal = COLUMNS.reduce((sum, c) => sum + (c.key === "notes" ? 0 : widths[c.key]), 0);
+  const notesWidth = Math.max(widths.notes, paneWidth - fixedTotal);
+  const colWidth = (key: ColumnKey) => (key === "notes" ? notesWidth : widths[key]);
+  const tableWidth = fixedTotal + notesWidth;
 
   useEffect(() => {
     if (!pendingFocus.current) return;
@@ -148,19 +163,26 @@ export function StepTable({ process, flags, focus }: Props) {
 
   return (
     <div ref={tableRef} className="h-full overflow-auto" data-testid="step-table">
-      <table className="w-full min-w-[1320px] table-fixed border-separate border-spacing-0 text-sm">
+      <table
+        className="table-fixed border-separate border-spacing-0 text-sm"
+        style={{ width: tableWidth }}
+      >
+        <colgroup>
+          {COLUMNS.map((c) => (
+            <col key={c.key} style={{ width: colWidth(c.key) }} />
+          ))}
+        </colgroup>
         <thead className="sticky top-0 z-10" style={{ background: "var(--surface)" }}>
           <tr className="text-left text-xs font-medium text-[var(--text-muted)]">
-            <Th className="w-14">No</Th>
-            <Th className="w-[22%]">Name</Th>
-            <Th className="w-[13%]">Owner</Th>
-            <Th className="w-[168px]">Type</Th>
-            <Th className="w-[19%]">Next</Th>
-            <Th className="w-[11%]">Technology</Th>
-            <Th className="w-[12%]">Contributors</Th>
-            <Th className="w-[11%]">Teams</Th>
-            <Th>Notes</Th>
-            <Th className="w-9"> </Th>
+            {COLUMNS.map((c) => (
+              <Th
+                key={c.key}
+                label={c.label}
+                width={colWidth(c.key)}
+                onResize={c.fixed ? undefined : (w) => setWidth(c.key, w)}
+                onReset={c.fixed ? undefined : () => resetWidth(c.key)}
+              />
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -375,13 +397,66 @@ export function StepTable({ process, flags, focus }: Props) {
   );
 }
 
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+const KEY_STEP = 16;
+
+/** Header cell with a drag handle on its right edge. Arrow keys resize too; Enter resets. */
+function Th({
+  label,
+  width,
+  onResize,
+  onReset,
+}: {
+  label: string;
+  width: number;
+  onResize?: (width: number) => void;
+  onReset?: () => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const start = useRef<{ x: number; width: number } | null>(null);
   return (
-    <th
-      className={`h-8 border-b px-2 font-medium ${className}`}
-      style={{ borderColor: "var(--border)" }}
-    >
-      {children}
+    <th className="relative h-8 border-b px-2 font-medium" style={{ borderColor: "var(--border)" }}>
+      <span className="block truncate">{label}</span>
+      {onResize && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize column"
+          aria-valuenow={Math.round(width)}
+          tabIndex={0}
+          title={`Resize the ${label} column. Drag, or use the arrow keys; double-click resets.`}
+          className="absolute top-0 right-0 bottom-0 w-2 cursor-col-resize select-none hover:bg-[var(--color-accent)]/40 focus-visible:bg-[var(--color-accent)]/40"
+          style={{ background: dragging ? "var(--color-accent)" : undefined, outline: "none" }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            (e.currentTarget as Element).setPointerCapture(e.pointerId);
+            start.current = { x: e.clientX, width };
+            setDragging(true);
+          }}
+          onPointerMove={(e) => {
+            if (!start.current) return;
+            onResize(start.current.width + (e.clientX - start.current.x));
+          }}
+          onPointerUp={() => {
+            start.current = null;
+            setDragging(false);
+          }}
+          onPointerCancel={() => {
+            start.current = null;
+            setDragging(false);
+          }}
+          onDoubleClick={() => onReset?.()}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+              e.preventDefault();
+              onResize(width + (e.key === "ArrowLeft" ? -KEY_STEP : KEY_STEP));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              onReset?.();
+            }
+          }}
+        />
+      )}
     </th>
   );
 }
