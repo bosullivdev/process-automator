@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { LayoutResult } from "../graph/layout-types";
+import type { LayoutGraph, LayoutResult } from "../graph/layout-types";
 import { getWorkspace, useStore } from "../store/workspace";
 import { hasUnsavedChanges } from "../store/autosave";
 import { isWorkspaceEmpty } from "../model/workspace";
@@ -7,6 +7,7 @@ import { exportWorkspaceJson, readWorkspaceFile } from "../export/json";
 import { exportProcessCsv } from "../export/csv";
 import { buildExportSvg, svgToBlob } from "../export/svg";
 import { svgToPng } from "../export/png";
+import { buildVsdx, vsdxToBlob } from "../export/vsdx";
 import { datestamp, downloadBlob, safeFilename } from "../export/download";
 import { useResolvedTheme } from "../hooks/useTheme";
 import { Popover } from "./ui/Popover";
@@ -18,10 +19,11 @@ interface Props {
   /** The process as shown: the whole thing, or one team's variant when isolated. */
   process: Process;
   layout: LayoutResult | null;
+  graph: LayoutGraph;
   focus: TeamFocus | null;
 }
 
-export function ExportMenu({ process, layout, focus }: Props) {
+export function ExportMenu({ process, layout, graph, focus }: Props) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export function ExportMenu({ process, layout, focus }: Props) {
   /** Filename stem: process name, plus the team when one is focused. */
   const stem = `${safeFilename(process.name)}${team ? `-${safeFilename(team.name)}` : ""}`;
 
-  const run = async (kind: "json" | "csv" | "svg" | "png" | "pdf") => {
+  const run = async (kind: "json" | "csv" | "svg" | "png" | "pdf" | "vsdx") => {
     setOpen(false);
     setBusy(kind);
     try {
@@ -51,6 +53,11 @@ export function ExportMenu({ process, layout, focus }: Props) {
       const svgEl = document.querySelector<SVGSVGElement>('[data-testid="map"] svg');
       if (!layout || !svgEl || layout.nodes.length === 0) {
         toast("Add some steps before exporting the map.");
+        return;
+      }
+      if (kind === "vsdx") {
+        const bytes = buildVsdx({ process, parties, teams, graph, layout, teamLine });
+        downloadBlob(vsdxToBlob(bytes), `${stem}-${datestamp()}.vsdx`);
         return;
       }
       const svg = await buildExportSvg({
@@ -105,6 +112,14 @@ export function ExportMenu({ process, layout, focus }: Props) {
           </button>
           <button role="menuitem" className="menu-item" onClick={() => run("pdf")}>
             Map as PDF
+          </button>
+          <button
+            role="menuitem"
+            className="menu-item"
+            title="Visio drawing with editable shapes and connectors glued to their steps"
+            onClick={() => run("vsdx")}
+          >
+            Map as Visio (.vsdx)
           </button>
         </div>
       </Popover>

@@ -81,7 +81,13 @@ a static site.
 - **Export**: the active process map as SVG, PNG (2x) or PDF, with a title
   block and a legend of every party on the map, owners and contributors alike.
   With a team highlighted or isolated, the export shows exactly what the map
-  shows, names the team in the title block and in the filename;
+  shows, names the team in the title block and in the filename. "Map as Visio"
+  writes a .vsdx drawing: steps are editable shapes with the step's owner,
+  teams, technology and notes as Shape Data, arrows are dynamic connectors
+  glued to their steps so they follow when a shape is moved, lanes are
+  labelled bands, and the title block and legend come along. The lanes are
+  plain shapes rather than Visio's reflowing cross-functional lanes, and the
+  shapes are not stencil masters, since the app ships no Microsoft stencils;
   or the active process table as CSV, with party and step names rather than
   ids, for sharing and review (CSV is export-only; import takes JSON). Fonts are embedded so exports render the same
   everywhere.

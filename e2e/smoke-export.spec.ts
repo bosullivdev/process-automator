@@ -68,6 +68,19 @@ test("export svg/json and import with replace confirm", async ({ page }) => {
   expect(pdfBytes.subarray(0, 5).toString()).toBe("%PDF-");
   expect(pdfBytes.toString("latin1")).toContain("Inter");
 
+  // Visio export: a zip package whose page names the steps.
+  const [vsdxDl] = await Promise.all([
+    page.waitForEvent("download"),
+    page
+      .getByRole("button", { name: "Export" })
+      .click()
+      .then(() => page.getByRole("menuitem", { name: "Map as Visio (.vsdx)" }).click()),
+  ]);
+  expect(vsdxDl.suggestedFilename()).toMatch(/.vsdx$/);
+  const vsdxBytes = fs.readFileSync((await vsdxDl.path())!);
+  expect(vsdxBytes.subarray(0, 2).toString()).toBe("PK");
+  expect(vsdxBytes.toString("latin1")).toContain("visio/pages/page1.xml");
+
   // JSON export
   const [jsonDl] = await Promise.all([
     page.waitForEvent("download"),

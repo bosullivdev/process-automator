@@ -163,7 +163,7 @@ export default function App() {
           <span className="text-xs text-[var(--text-muted)]">{parties.length}</span>
         </button>
         <ImportButton />
-        <ExportMenu process={shown} layout={layout} focus={focus} />
+        <ExportMenu process={shown} layout={layout} graph={graph} focus={focus} />
         <button
           className="btn"
           aria-label="Toggle orientation"
