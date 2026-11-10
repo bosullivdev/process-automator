@@ -51,6 +51,12 @@ export interface Step {
    * draws it once in each co-owner's lane with the same links as the owner's.
    */
   coOwnerIds: string[];
+  /**
+   * Which teams each party (owner or co-owner) does this step for, by party
+   * id. A party with no entry does it for every team the step applies to.
+   * Lets one shared step have different owners per team.
+   */
+  ownerTeams?: Record<string, string[]>;
   next: NextLink[]; // empty allowed only on "end"
   technology: string;
   contributorIds: string[]; // party IDs

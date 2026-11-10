@@ -2,6 +2,7 @@ import type { NextLink, Process, Step, Team, Workspace } from "./types";
 import { newId } from "./ids";
 import { nextColourIndex } from "./party";
 import { nextDisplayNo } from "./workspace";
+import { stepParties } from "./share";
 
 /** Teams take the lowest free colour among teams; their palette is independent of the parties'. */
 export function createTeam(name: string, teams: readonly Team[]): Team {
@@ -16,6 +17,70 @@ export function stepInTeam(step: Pick<Step, "teamIds">, teamId: string): boolean
 /** A link with no team tags applies wherever both of its ends do. */
 export function linkInTeam(link: Pick<NextLink, "teamIds">, teamId: string): boolean {
   return !link.teamIds || link.teamIds.length === 0 || link.teamIds.includes(teamId);
+}
+/** Whether a party does the step for this team (its lane copy is on the team's route). */
+export function partyInTeam(
+  step: Pick<Step, "ownerTeams">,
+  partyId: string,
+  teamId: string,
+): boolean {
+  const scope = step.ownerTeams?.[partyId];
+  return !scope?.length || scope.includes(teamId);
+}
+/**
+ * Owner and co-owners as one team sees them. When no party does the step for
+ * the team, the team sees it unassigned.
+ */
+export function ownersForTeam(
+  step: Step,
+  teamId: string,
+): { ownerId: string | null; coOwnerIds: string[] } {
+  const mine = stepParties(step).filter((p) => p === null || partyInTeam(step, p, teamId));
+  if (mine.length === 0 || mine[0] === null) return { ownerId: null, coOwnerIds: [] };
+  const [ownerId, ...rest] = mine;
+  return { ownerId, coOwnerIds: rest.filter((p): p is string => p !== null) };
+}
+/**
+ * After a step's teams change, drop parties whose scope no longer meets any
+ * of them and trim the remaining scopes to the step's teams.
+ */
+export function pruneOwnersToTeams(step: Step, all: readonly string[]): Step {
+  const stepTeams = step.teamIds.length ? step.teamIds : all;
+  const parties = stepParties(step).filter((p): p is string => !!p);
+  const keep = parties.filter((p) => {
+    const scope = step.ownerTeams?.[p];
+    return !scope?.length || scope.some((id) => stepTeams.includes(id));
+  });
+  const ownerId = step.ownerId && keep.includes(step.ownerId) ? step.ownerId : (keep[0] ?? null);
+  const ordered = ownerId ? [ownerId, ...keep.filter((p) => p !== ownerId)] : [];
+  const ownerTeams: Record<string, string[]> = {};
+  for (const p of ordered) {
+    const scope = step.ownerTeams?.[p];
+    if (!scope?.length) continue;
+    const narrowed = scope.filter((id) => stepTeams.includes(id));
+    if (!stepTeams.every((id) => narrowed.includes(id))) ownerTeams[p] = narrowed;
+  }
+  const out: Step = { ...step, ownerId, coOwnerIds: ordered.slice(1) };
+  if (Object.keys(ownerTeams).length) out.ownerTeams = ownerTeams;
+  else delete out.ownerTeams;
+  return out;
+}
+/**
+ * Teams a party's lane copy of the step applies to: the step's teams
+ * narrowed by the party's scope. Empty means every team.
+ */
+export function effectiveTeams(
+  step: Pick<Step, "teamIds" | "ownerTeams">,
+  partyId: string | null,
+  all: readonly string[],
+): string[] {
+  const scope = partyId ? (step.ownerTeams?.[partyId] ?? []) : [];
+  if (!scope.length) return [...step.teamIds];
+  if (!step.teamIds.length) return normaliseScope(scope, all);
+  return normaliseScope(
+    scope.filter((id) => step.teamIds.includes(id)),
+    all,
+  );
 }
 
 /**
@@ -101,10 +166,15 @@ export function processForTeam(process: Process, teamId: string): Process {
     ...process,
     steps: process.steps
       .filter((s) => keep.has(s.id))
-      .map((s) => ({
-        ...s,
-        next: s.next.filter((l) => keep.has(l.targetId) && linkInTeam(l, teamId)),
-      })),
+      .map((s) => {
+        const out: Step = {
+          ...s,
+          ...ownersForTeam(s, teamId),
+          next: s.next.filter((l) => keep.has(l.targetId) && linkInTeam(l, teamId)),
+        };
+        delete out.ownerTeams;
+        return out;
+      }),
   };
 }
 
@@ -163,9 +233,17 @@ export function copyTeamRoute(
     ...process,
     steps: process.steps.map((s) => {
       if (!route.has(s.id)) return s;
+      // Parties doing the step for the source team do it for the new team too.
+      const ownerTeams = Object.fromEntries(
+        Object.entries(s.ownerTeams ?? {}).map(([p, scope]) => [
+          p,
+          scope.includes(from) ? scopeWith(scope, to, all) : scope,
+        ]),
+      );
       return {
         ...s,
         teamIds: scopeWith(s.teamIds, to, all),
+        ...(Object.keys(ownerTeams).length ? { ownerTeams } : {}),
         next: s.next.map((l) =>
           linkInTeam(l, from) && route.has(l.targetId) ? linkWith(l, to, all) : l,
         ),
@@ -238,13 +316,16 @@ export function removeStepFromTeam(
 
   const steps = process.steps.map((s): Step => {
     if (s.id === stepId) {
-      return {
-        ...s,
-        teamIds: remaining,
-        next: s.next
-          .map((l) => (linkInTeam(l, teamId) ? linkWithout(l, teamId, all) : l))
-          .filter((l): l is NextLink => !!l),
-      };
+      return pruneOwnersToTeams(
+        {
+          ...s,
+          teamIds: remaining,
+          next: s.next
+            .map((l) => (linkInTeam(l, teamId) ? linkWithout(l, teamId, all) : l))
+            .filter((l): l is NextLink => !!l),
+        },
+        all,
+      );
     }
     if (!inRoute.has(s.id)) return s;
     const toX = s.next.filter((l) => l.targetId === stepId && linkInTeam(l, teamId));
@@ -300,24 +381,30 @@ export function forkStepForTeam(
   const inRoute = new Set(process.steps.filter((s) => stepInTeam(s, teamId)).map((s) => s.id));
   const own = normaliseScope([teamId], all);
 
-  const copy: Step = {
-    ...x,
-    id: newId(),
-    displayNo: nextDisplayNo(process),
-    teamIds: own,
-    coOwnerIds: [...x.coOwnerIds],
-    contributorIds: [...x.contributorIds],
-    next: x.next
-      .filter((l) => linkInTeam(l, teamId) && inRoute.has(l.targetId))
-      .map((l) => tidyLink({ ...l, teamIds: own })),
-  };
-  const original: Step = {
-    ...x,
-    teamIds: remaining,
-    next: x.next
-      .map((l) => (linkInTeam(l, teamId) ? linkWithout(l, teamId, all) : l))
-      .filter((l): l is NextLink => !!l),
-  };
+  const copy: Step = pruneOwnersToTeams(
+    {
+      ...x,
+      id: newId(),
+      displayNo: nextDisplayNo(process),
+      teamIds: own,
+      coOwnerIds: [...x.coOwnerIds],
+      contributorIds: [...x.contributorIds],
+      next: x.next
+        .filter((l) => linkInTeam(l, teamId) && inRoute.has(l.targetId))
+        .map((l) => tidyLink({ ...l, teamIds: own })),
+    },
+    all,
+  );
+  const original: Step = pruneOwnersToTeams(
+    {
+      ...x,
+      teamIds: remaining,
+      next: x.next
+        .map((l) => (linkInTeam(l, teamId) ? linkWithout(l, teamId, all) : l))
+        .filter((l): l is NextLink => !!l),
+    },
+    all,
+  );
 
   const steps = process.steps.flatMap((s): Step[] => {
     if (s.id === stepId) return [original, copy];

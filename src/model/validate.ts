@@ -193,9 +193,11 @@ export function validateProcess(
     }
     // Teams
     if (teamIds) {
-      const unknown = [...s.teamIds, ...s.next.flatMap((l) => l.teamIds ?? [])].filter(
-        (id) => !teamIds.has(id),
-      );
+      const unknown = [
+        ...s.teamIds,
+        ...s.next.flatMap((l) => l.teamIds ?? []),
+        ...Object.values(s.ownerTeams ?? {}).flat(),
+      ].filter((id) => !teamIds.has(id));
       if (unknown.length) {
         flags.push({
           severity: "error",

@@ -48,10 +48,17 @@ a static site.
   link and only the team's arrows move; press × on a shared row (or "Not for
   this team" in the row's ⋯ menu) and the team skips the step with its arrows
   reconnected around it; "Make a copy" gives the team its own version of a
-  shared step when it does the step differently. Editing any other cell of a
-  shared step in this view (owner, name, type, technology, contributors,
-  notes) makes that copy for you first, so the change applies to this team
-  only; Team A keeps the original. With all teams showing, arrows every team
+  shared step when it does the step differently. Changing the Owner cell in
+  this view changes who does the step for this team only: the step stays one
+  shared row, and each party on it remembers which teams it does the step
+  for, so the map draws that party's lane copy only for those teams and the
+  all-teams view shows the scope after the name, as "Deputy Head (Central)".
+  Editing any other cell of a shared step in this view (name, type,
+  technology, contributors, notes) makes that copy for you first, so the
+  change applies to this team only; Team A keeps the original. A copy made
+  this way can be folded back later: the row's ⋯ menu offers "Merge step N
+  into this one" for another team's copy with the same name and type, and
+  the result is one row that keeps both teams' owners and links. With all teams showing, arrows every team
   uses stay grey and arrows only some teams use are drawn in one coloured line
   per team, side by side; steps used by a subset carry a dashed pill naming
   them. "Highlight" fades everything a team does not use and draws its route

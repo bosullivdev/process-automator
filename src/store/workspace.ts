@@ -18,6 +18,10 @@ import {
 } from "../model/party";
 import { assignOwners as assignOwnersPure } from "../model/share";
 import {
+  mergeSteps as mergeStepsPure,
+  setOwnersForTeam as setOwnersForTeamPure,
+} from "../model/owner-teams";
+import {
   applyScopedNext,
   copyTeamRoute as copyTeamRoutePure,
   createTeam,
@@ -122,6 +126,10 @@ export interface StoreState extends DocState {
    * drawn in every one of their lanes. One party alone clears the co-owners.
    */
   assignOwners: (processId: string, stepId: string, partyIds: string[]) => void;
+  /** Set which parties do the step for one team; other teams' owners are untouched. */
+  setOwnersForTeam: (processId: string, stepId: string, partyIds: string[], teamId: string) => void;
+  /** Fold one step (typically a team's copy) into another, keeping both teams' routes. */
+  mergeSteps: (processId: string, keepId: string, dropId: string) => void;
   setStepNext: (processId: string, stepId: string, next: NextLink[]) => void;
   /** Scope a step to some teams; an empty list means every team. */
   setStepTeams: (processId: string, stepId: string, teamIds: string[]) => void;
@@ -300,6 +308,29 @@ export const useStore = create<StoreState>()(
             const idx = d.processes.findIndex((p) => p.id === processId);
             if (idx < 0) return;
             d.processes[idx] = assignOwnersPure(d.processes[idx], stepId, partyIds);
+          }),
+        setOwnersForTeam: (processId, stepId, partyIds, teamId) =>
+          edit((d) => {
+            const idx = d.processes.findIndex((p) => p.id === processId);
+            if (idx < 0) return;
+            d.processes[idx] = setOwnersForTeamPure(
+              d.processes[idx],
+              stepId,
+              partyIds,
+              teamId,
+              d.teams.map((t) => t.id),
+            );
+          }),
+        mergeSteps: (processId, keepId, dropId) =>
+          edit((d) => {
+            const idx = d.processes.findIndex((p) => p.id === processId);
+            if (idx < 0) return;
+            d.processes[idx] = mergeStepsPure(
+              d.processes[idx],
+              keepId,
+              dropId,
+              d.teams.map((t) => t.id),
+            );
           }),
         setStepNext: (processId, stepId, next) =>
           edit((d) => {

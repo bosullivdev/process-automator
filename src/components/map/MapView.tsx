@@ -164,7 +164,18 @@ export function MapView({
     marker: `url(#arrow-team-${t.id})`,
   });
   /** The teams that travel an edge; null when every team does (or there are no teams). */
-  const edgeTeams = (e: { sourceStepId: string; targetStepId: string }): Team[] | null => {
+  /** Teams a lane copy applies to; empty = every team. */
+  const nodeTeams = (nodeId: string): string[] => nodeKind.get(nodeId)?.teamIds ?? [];
+  const nodeInTeam = (nodeId: string, teamId: string) => {
+    const ids = nodeTeams(nodeId);
+    return ids.length === 0 || ids.includes(teamId);
+  };
+  const edgeTeams = (e: {
+    from: string;
+    to: string;
+    sourceStepId: string;
+    targetStepId: string;
+  }): Team[] | null => {
     if (teams.length === 0) return null;
     const src = stepById.get(e.sourceStepId);
     if (!src) return null;
@@ -176,10 +187,13 @@ export function MapView({
       if (!tgt || !link) return null;
       used = linkTeams(src, link, tgt, teams);
     }
+    // Both lane copies must apply to the team as well.
+    used = used.filter((t) => nodeInTeam(e.from, t.id) && nodeInTeam(e.to, t.id));
     return used.length === teams.length ? null : used;
   };
+  type EdgeRef = { from: string; to: string; sourceStepId: string; targetStepId: string };
   const edgeStyle = (
-    e: { sourceStepId: string; targetStepId: string },
+    e: EdgeRef,
     selected: boolean,
     dimmed: boolean,
   ): { lines: EdgeLine[]; width: number } => {
@@ -194,11 +208,12 @@ export function MapView({
       ? { lines: used.map(teamLine), width: 1.5 }
       : { lines: neutral, width: 1.5 };
   };
-  const edgeDimmed = (e: { sourceStepId: string; targetStepId: string }) =>
+  const edgeDimmed = (e: EdgeRef) =>
     !!fade &&
     !(
       fade.stepIds.has(e.sourceStepId) &&
       fade.stepIds.has(e.targetStepId) &&
+      (!focus || (nodeInTeam(e.from, focus.teamId) && nodeInTeam(e.to, focus.teamId))) &&
       (e.sourceStepId === e.targetStepId ||
         fade.linkKeys.has(`${e.sourceStepId}->${e.targetStepId}`))
     );
@@ -533,13 +548,16 @@ export function MapView({
                 mode={mode}
                 selected={!!step && step.id === selectedStepId}
                 flags={step ? flags.get(step.id) : undefined}
-                teamNames={step ? namesOf(step.teamIds, teams) : []}
+                teamNames={step ? namesOf(ln.teamIds, teams) : []}
                 teamColour={
-                  step && step.teamIds.length === 1
-                    ? teams.filter((t) => t.id === step.teamIds[0]).map(teamFill)[0]
+                  step && ln.teamIds.length === 1
+                    ? teams.filter((t) => t.id === ln.teamIds[0]).map(teamFill)[0]
                     : undefined
                 }
-                dimmed={!!fade && !fade.stepIds.has(ln.stepId)}
+                dimmed={
+                  !!fade &&
+                  (!fade.stepIds.has(ln.stepId) || (!!focus && !nodeInTeam(ln.id, focus.teamId)))
+                }
                 onSelect={(id) => {
                   selectionFromMap.current = true;
                   onSelect(id);

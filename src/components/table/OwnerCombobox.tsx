@@ -23,6 +23,8 @@ interface Props {
   onCreateParty: (name: string) => string;
   onEnterRow?: () => void;
   ariaLabel: string;
+  /** Text to show after a party's name when it does the step for some teams only, e.g. " (Estates)". */
+  scopeOf?: (partyId: string) => string;
 }
 
 /** Resolve a typed team name the way Enter would: exact or near match, else a new party. */
@@ -39,6 +41,7 @@ export function OwnerCombobox({
   onAssign,
   onCreateParty,
   ariaLabel,
+  scopeOf,
 }: Props) {
   const current = parties.find((p) => p.id === value) ?? null;
   const coOwners = useMemo(
@@ -52,7 +55,9 @@ export function OwnerCombobox({
     [coOwnerIds, current, parties],
   );
   // What the cell shows when not being edited: every party, owner first.
-  const settled = current ? [current, ...coOwners].map((p) => p.name).join(", ") : "";
+  const settled = current
+    ? [current, ...coOwners].map((p) => p.name + (scopeOf?.(p.id) ?? "")).join(", ")
+    : "";
   // null = "not editing": show the settled text.
   const [draft, setDraft] = useState<string | null>(null);
   const editing = draft !== null;

@@ -17,6 +17,7 @@ const stepSchema = z.object({
   ownerId: z.string().nullable(),
   // Added with co-owned steps; older files load with none.
   coOwnerIds: z.array(z.string()).default([]),
+  ownerTeams: z.record(z.string(), z.array(z.string())).optional(),
   next: z.array(nextLinkSchema),
   technology: z.string(),
   contributorIds: z.array(z.string()),

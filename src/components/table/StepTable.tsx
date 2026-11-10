@@ -6,7 +6,14 @@ import { applyVariant, stepVariant, undo, useStore, type StepVariant } from "../
 import { OwnerCombobox } from "./OwnerCombobox";
 import { ContributorsCombobox } from "./ContributorsCombobox";
 import { TeamsCombobox } from "./TeamsCombobox";
-import { linkInTeam, scopeWithout, type TeamFocus } from "../../model/team";
+import {
+  linkInTeam,
+  ownersForTeam,
+  scopeWithout,
+  teamNames,
+  type TeamFocus,
+} from "../../model/team";
+import { mergeCandidates } from "../../model/owner-teams";
 import { Popover } from "../ui/Popover";
 import { NextPicker } from "./NextPicker";
 import { Tooltip } from "../ui/Tooltip";
@@ -33,7 +40,13 @@ export function StepTable({ process, flags, focus }: Props) {
   const isolateTeam = isolate ? teams.find((t) => t.id === isolate.teamId) : undefined;
   const allTeamIds = useMemo(() => teams.map((t) => t.id), [teams]);
   const routeSteps = useMemo(
-    () => (isolate ? process.steps.filter((s) => isolate.view.stepIds.has(s.id)) : process.steps),
+    () =>
+      isolate
+        ? process.steps
+            .filter((s) => isolate.view.stepIds.has(s.id))
+            // One team's view shows that team's owners of each shared step.
+            .map((s) => ({ ...s, ...ownersForTeam(s, isolate.teamId) }))
+        : process.steps,
     [isolate, process.steps],
   );
   /** The links of a step as the isolated team sees them. */
@@ -57,6 +70,10 @@ export function StepTable({ process, flags, focus }: Props) {
   const setStepVariant = useStore((s) => s.setStepVariant);
   const setStepOwner = useStore((s) => s.setStepOwner);
   const assignOwners = useStore((s) => s.assignOwners);
+  const setOwnersForTeam = useStore((s) => s.setOwnersForTeam);
+  const mergeSteps = useStore((s) => s.mergeSteps);
+  // The master process, for merge candidates even when one team's variant is shown.
+  const master = useStore((s) => s.processes.find((p) => p.id === process.id)) ?? process;
   const setStepNext = useStore((s) => s.setStepNext);
   const deleteStep = useStore((s) => s.deleteStep);
   const duplicateStep = useStore((s) => s.duplicateStep);
@@ -191,9 +208,33 @@ export function StepTable({ process, flags, focus }: Props) {
   const patchStep = (step: Step, patch: Partial<Step>) => {
     if (!editForTeam(step, (s) => Object.assign(s, patch))) updateStep(process.id, step.id, patch);
   };
+  /** In one team's view, owner edits change that team's owners only; the step stays shared. */
+  const ownersForTeamEdit = (step: Step, partyIds: string[]): boolean => {
+    if (!isolate || !isolateTeam || !sharedWithOthers(step)) return false;
+    setOwnersForTeam(process.id, step.id, partyIds, isolate.teamId);
+    toast(
+      `Owners of step ${step.displayNo} changed for ${isolateTeam.name} only. Other teams keep theirs.`,
+      { label: "Undo", onClick: () => undo() },
+    );
+    return true;
+  };
   const changeOwner = (step: Step, ownerId: string | null) => {
-    if (!editForTeam(step, (s) => (s.ownerId = ownerId)))
-      setStepOwner(process.id, step.id, ownerId);
+    if (ownersForTeamEdit(step, ownerId ? [ownerId] : [])) return;
+    setStepOwner(process.id, step.id, ownerId);
+  };
+  const mergeInto = (step: Step, drop: Step) => {
+    mergeSteps(process.id, step.id, drop.id);
+    toast(
+      `Merged step ${drop.displayNo} into step ${step.displayNo}; both teams keep their routes.`,
+      {
+        label: "Undo",
+        onClick: () => undo(),
+      },
+    );
+  };
+  const scopeOf = (step: Step) => (id: string) => {
+    const names = teamNames(step.ownerTeams?.[id], teams);
+    return names.length ? ` (${names.join(", ")})` : "";
   };
   const changeVariant = (step: Step, variant: StepVariant) => {
     if (!editForTeam(step, (s) => applyVariant(s, variant)))
@@ -245,12 +286,8 @@ export function StepTable({ process, flags, focus }: Props) {
 
   const assign = useCallback(
     (step: Step, partyIds: string[]) => {
-      // Sharing a step with more owners inside a team's own view works on the team's copy.
-      const forked =
-        isolate && sharedWithOthers(step)
-          ? forkStepForTeam(process.id, step.id, isolate.teamId)
-          : null;
-      assignOwners(process.id, forked ?? step.id, partyIds);
+      if (ownersForTeamEdit(step, partyIds)) return;
+      assignOwners(process.id, step.id, partyIds);
       const names = useStore.getState().parties;
       const also = partyIds.slice(1).map((id) => names.find((p) => p.id === id)?.name ?? "?");
       if (also.length === 0) return;
@@ -263,7 +300,7 @@ export function StepTable({ process, flags, focus }: Props) {
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [assignOwners, forkStepForTeam, isolate, process.id, teams],
+    [assignOwners, isolate, process.id, teams],
   );
 
   return (
@@ -291,7 +328,7 @@ export function StepTable({ process, flags, focus }: Props) {
           </tr>
         </thead>
         <tbody>
-          {process.steps.map((step) => {
+          {routeSteps.map((step) => {
             const inTeam = !focus || focus.view.stepIds.has(step.id);
             if (focus?.mode === "isolate" && !inTeam) return null;
             const stepFlags = flags.get(step.id);
@@ -369,6 +406,7 @@ export function StepTable({ process, flags, focus }: Props) {
                   <OwnerCombobox
                     value={step.ownerId}
                     coOwnerIds={step.coOwnerIds}
+                    scopeOf={isolate ? undefined : scopeOf(step)}
                     parties={parties}
                     onChange={(id) => changeOwner(step, id)}
                     onAssign={(ids) => assign(step, ids)}
@@ -454,16 +492,25 @@ export function StepTable({ process, flags, focus }: Props) {
                 </Td>
                 <Td>
                   <div className="flex items-center justify-end gap-0.5 pr-1">
-                    {isolate && isolateTeam && (
-                      <RowMenu
-                        step={step}
-                        teamName={isolateTeam.name}
-                        shared={sharedWithOthers(step)}
-                        onLeave={() => leaveTeam(step)}
-                        onFork={() => forkForTeam(step)}
-                        onDelete={() => remove(step)}
-                      />
-                    )}
+                    {(() => {
+                      const merges = teams.length ? mergeCandidates(master, step.id) : [];
+                      if (!isolate && merges.length === 0) return null;
+                      return (
+                        <RowMenu
+                          step={step}
+                          teamName={isolateTeam?.name ?? null}
+                          shared={!!isolate && sharedWithOthers(step)}
+                          merges={merges.map((m) => ({
+                            step: m,
+                            teams: teamNames(m.teamIds, teams).join(", "),
+                          }))}
+                          onLeave={() => leaveTeam(step)}
+                          onFork={() => forkForTeam(step)}
+                          onMerge={(drop) => mergeInto(step, drop)}
+                          onDelete={() => remove(step)}
+                        />
+                      );
+                    })()}
                     <button
                       type="button"
                       aria-label={
@@ -525,15 +572,21 @@ function RowMenu({
   step,
   teamName,
   shared,
+  merges,
   onLeave,
   onFork,
+  onMerge,
   onDelete,
 }: {
   step: Step;
-  teamName: string;
+  /** The team whose variant is shown alone, or null when every team is shown. */
+  teamName: string | null;
   shared: boolean;
+  /** Other teams' copies of this step that can be folded back into it. */
+  merges: Array<{ step: Step; teams: string }>;
   onLeave: () => void;
   onFork: () => void;
+  onMerge: (drop: Step) => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -558,7 +611,22 @@ function RowMenu({
       </button>
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} width={260}>
         <div role="menu" className="flex flex-col">
-          {shared ? (
+          {merges.map((m) => (
+            <button
+              key={m.step.id}
+              role="menuitem"
+              className="menu-item"
+              onClick={() => pick(() => onMerge(m.step))}
+            >
+              <span className="flex flex-col leading-tight">
+                <span>Merge step {m.step.displayNo} into this one</span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {m.teams}'s copy of the same step; one row, each team keeps its owners and links
+                </span>
+              </span>
+            </button>
+          ))}
+          {teamName !== null && shared ? (
             <>
               <button role="menuitem" className="menu-item" onClick={() => pick(onLeave)}>
                 <span className="flex flex-col leading-tight">
@@ -577,11 +645,11 @@ function RowMenu({
                 </span>
               </button>
             </>
-          ) : (
+          ) : teamName !== null ? (
             <div className="px-2 py-1.5 text-xs text-[var(--text-muted)]">
               Only {teamName} uses this step, so edits affect no other team.
             </div>
-          )}
+          ) : null}
           <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />
           <button role="menuitem" className="menu-item" onClick={() => pick(onDelete)}>
             Delete step for every team

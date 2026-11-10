@@ -1,5 +1,5 @@
 import type { NextLink, Party, Process, Step, Team } from "../model/types";
-import { teamNames } from "../model/team";
+import { effectiveTeams, teamNames } from "../model/team";
 import { buildAdjacency, canReachEnd } from "./analysis";
 import {
   NODE_SIZE,
@@ -196,6 +196,7 @@ export function buildLayoutGraph(
 
   const nodes: LayoutNode[] = [];
   const edges: LayoutEdge[] = [];
+  const allTeamIds = teams.map((t) => t.id);
 
   // Lanes each step is drawn in, in order; the first node keeps the step id.
   const lanesOf = new Map<string, string[]>();
@@ -226,17 +227,29 @@ export function buildLayoutGraph(
   const arrowsFrom = new Map<string, Arrow[]>();
   const outCount = new Map<string, number>();
   const inCount = new Map<string, number>();
+  // Teams a lane copy applies to; an arrow between two copies needs a team in common
+  // with both and with the link itself, else no team would ever travel it.
+  const laneTeams = (s: Step, lane: string) =>
+    effectiveTeams(s, lane === UNASSIGNED_LANE ? null : lane, allTeamIds);
+  const sharesTeam = (a: readonly string[], b: readonly string[], link: readonly string[]) => {
+    if (allTeamIds.length === 0) return true;
+    const sets = [a, b, link].filter((x) => x.length > 0);
+    if (sets.length === 0) return true;
+    return allTeamIds.some((id) => sets.every((x) => x.includes(id)));
+  };
   for (const s of steps) {
     const sLanes = lanesOf.get(s.id)!;
     const sIds = nodeIdsOf.get(s.id)!;
     const list: Arrow[] = [];
     for (const l of s.next) {
       if (l.targetId === s.id || !byId.has(l.targetId)) continue;
+      const t = byId.get(l.targetId)!;
       const tLanes = lanesOf.get(l.targetId)!;
       const tIds = nodeIdsOf.get(l.targetId)!;
       sLanes.forEach((ls, si) => {
         tLanes.forEach((lt, ti) => {
           if (ls !== lt && tLanes.includes(ls) && sLanes.includes(lt)) return;
+          if (!sharesTeam(laneTeams(s, ls), laneTeams(t, lt), l.teamIds ?? [])) return;
           const from = sIds[si];
           const to = tIds[ti];
           list.push({ link: l, from, to });
@@ -258,6 +271,7 @@ export function buildLayoutGraph(
     const lanes = lanesOf.get(s.id)!;
     nodeIdsOf.get(s.id)!.forEach((id, i) => {
       const lane = lanes[i];
+      const teamIds = effectiveTeams(s, lane === UNASSIGNED_LANE ? null : lane, allTeamIds);
       if (hasJoin(id)) {
         nodes.push({
           id: joinId(id),
@@ -265,6 +279,7 @@ export function buildLayoutGraph(
           laneId: lane,
           ...sizeGateway("join"),
           stepId: s.id,
+          teamIds,
         });
       }
       nodes.push({
@@ -276,10 +291,11 @@ export function buildLayoutGraph(
           orientation,
           (outCount.get(id) ?? 0) >= 2,
           annotations,
-          teamNames(s.teamIds, teams).join(", "),
+          teamNames(teamIds, teams).join(", "),
         ),
         pinFirst: s.type === "start",
         stepId: s.id,
+        teamIds,
       });
       if (hasFork(s, id)) {
         nodes.push({
@@ -288,6 +304,7 @@ export function buildLayoutGraph(
           laneId: lane,
           ...sizeGateway("fork"),
           stepId: s.id,
+          teamIds,
         });
         edges.push({
           id: `${id}->${forkId(id)}`,

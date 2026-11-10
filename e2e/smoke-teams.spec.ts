@@ -171,18 +171,19 @@ test("build Team A, start Team B from it, edit B's route alone, see coloured arr
   await expect(map.locator("[data-node-id]")).toHaveCount(3);
   await expect(map.locator("[data-edge-id]")).toHaveCount(2);
 
-  // Changing the owner of the shared Review step gives Team B its own copy; Team A keeps the original.
+  // Changing the owner of the shared Review step changes it for Team B only; the step stays shared.
   await page.getByLabel("Owner").nth(1).fill("Legal");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("status").last()).toContainText("Team B's own copy");
+  await expect(page.getByRole("status").last()).toContainText("for Team B only");
   await expect(page.getByLabel("Step name")).toHaveCount(3);
   await expect(page.getByLabel("Step name").nth(1)).toHaveValue("Review");
   await expect(page.getByLabel("Owner").nth(1)).toHaveValue("Legal");
-  await expect(page.getByLabel("Teams").nth(1).locator("..")).toContainText("Team B");
-  // Typing into the copy's name keeps editing the copy, not a new fork.
-  await page.getByLabel("Step name").nth(1).fill("Review (B)");
-  await expect(page.getByLabel("Step name")).toHaveCount(3);
   await expect(map.locator("[data-lane-id]")).toHaveCount(2);
+  // Renaming it in Team B's view still makes Team B its own copy.
+  await page.getByLabel("Step name").nth(1).fill("Review (B)");
+  await expect(page.getByRole("status").last()).toContainText("Team B's own copy");
+  await expect(page.getByLabel("Step name")).toHaveCount(3);
+  await expect(page.getByLabel("Owner").nth(1)).toHaveValue("Legal");
 
   // Everything together: Team A still has four steps; team-specific arrows are coloured.
   await page.getByTestId("team-menu").click();

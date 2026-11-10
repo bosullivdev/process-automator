@@ -56,6 +56,12 @@ export function assignOwners(
     coOwnerIds,
     contributorIds: src.contributorIds.filter((c) => !group.has(c)),
   };
+  // Parties that stay keep their team scopes; parties that leave lose theirs.
+  if (src.ownerTeams) {
+    const kept = Object.fromEntries(Object.entries(src.ownerTeams).filter(([p]) => group.has(p)));
+    if (Object.keys(kept).length) step.ownerTeams = kept;
+    else delete step.ownerTeams;
+  }
   const steps = process.steps.map((s) => (s.id === stepId ? step : s));
 
   const laneOrder = [...process.laneOrder];

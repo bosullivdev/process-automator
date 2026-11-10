@@ -43,6 +43,8 @@ export interface LayoutNode {
   pinFirst?: boolean;
   /** For gateways: the step this gateway was inserted for. */
   stepId: string;
+  /** Teams this node applies to (the step's teams narrowed by its lane party's scope); empty = every team. */
+  teamIds: string[];
 }
 
 export interface LayoutEdge {

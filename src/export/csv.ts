@@ -59,7 +59,12 @@ export function processToCsv(
     return [
       String(s.displayNo),
       s.name,
-      [s.ownerId, ...s.coOwnerIds].map(partyName).join("; "),
+      [s.ownerId, ...s.coOwnerIds]
+        .map((id) => {
+          const scope = id ? teamNames(s.ownerTeams?.[id], teams) : [];
+          return partyName(id) + (scope.length ? ` {${scope.join(", ")}}` : "");
+        })
+        .join("; "),
       typeLabel(s),
       next,
       s.technology,
