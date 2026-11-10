@@ -1,4 +1,4 @@
-import type { Party, Process, Step, Team } from "../model/types";
+import type { BoxWidth, Party, Process, Step, Team } from "../model/types";
 import { teamNames } from "../model/team";
 import { buildAdjacency, canReachEnd } from "./analysis";
 import {
@@ -29,6 +29,14 @@ const LINE_H = 14;
 const TASK_PAD_X = 12;
 const TASK_PAD_Y = 12;
 const MAX_NAME_LINES = 8;
+/** Task box width per setting. The default matches NODE_SIZE.task.width. */
+export const BOX_WIDTHS: Record<BoxWidth, number> = {
+  narrow: 140,
+  normal: NODE_SIZE.task.width,
+  wide: 224,
+  extra: 300,
+};
+/** Outside names (start, end, decision) wrap to this width at the normal box width. */
 const OUTSIDE_MAX_WIDTH = 150;
 const OUTSIDE_MAX_LINES = 4;
 const OUTSIDE_GAP = 4;
@@ -75,19 +83,21 @@ export function sizeStep(
   multiExit = false,
   annotations: Annotations = "full",
   teamLabel = "",
+  boxWidth: BoxWidth = "normal",
 ): Sized {
   const kind: LayoutNodeKind = step.type;
   const name = step.name.trim() || "Untitled";
   const full = annotations === "full";
   const badges = full ? step.contributorIds.length : 0;
   const badgesWidth = badges ? badges * (BADGE_SIZE + BADGE_GAP) - BADGE_GAP : 0;
+  const taskWidth = BOX_WIDTHS[boxWidth];
+  // Outside names and pills scale with the box width so every shape's text widens together.
+  const outsideMax = Math.round((OUTSIDE_MAX_WIDTH * taskWidth) / NODE_SIZE.task.width);
   const techText = full ? step.technology.trim() : "";
-  const tech = techText ? wrapToWidth(techText, OUTSIDE_MAX_WIDTH - 16, SUB_SIZE, 1)[0] : undefined;
+  const tech = techText ? wrapToWidth(techText, outsideMax - 16, SUB_SIZE, 1)[0] : undefined;
   const techWidth = tech ? Math.ceil(measureText(tech, SUB_SIZE)) + 16 : 0;
   const teamsText = full ? teamLabel.trim() : "";
-  const teams = teamsText
-    ? wrapToWidth(teamsText, OUTSIDE_MAX_WIDTH - 16, SUB_SIZE, 1)[0]
-    : undefined;
+  const teams = teamsText ? wrapToWidth(teamsText, outsideMax - 16, SUB_SIZE, 1)[0] : undefined;
   const teamsWidth = teams ? Math.ceil(measureText(teams, SUB_SIZE)) + 16 : 0;
 
   // Shape and inside text.
@@ -96,7 +106,7 @@ export function sizeStep(
   let nameLines: string[];
   const outside = kind !== "task";
   if (kind === "task") {
-    sw = NODE_SIZE.task.width;
+    sw = taskWidth;
     nameLines = wrapToWidth(name, sw - TASK_PAD_X * 2, NAME_SIZE, MAX_NAME_LINES, 500);
     sh = Math.max(
       NODE_SIZE.task.height,
@@ -104,7 +114,7 @@ export function sizeStep(
     );
   } else {
     ({ width: sw, height: sh } = NODE_SIZE[kind]);
-    nameLines = wrapToWidth(name, OUTSIDE_MAX_WIDTH, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
+    nameLines = wrapToWidth(name, outsideMax, OUTSIDE_SIZE, OUTSIDE_MAX_LINES, 500);
   }
 
   // Outside block: name lines (non-task), then the technology pill, then badges, then teams.
@@ -180,6 +190,7 @@ export function buildLayoutGraph(
   orientation: Orientation = "horizontal",
   annotations: Annotations = "full",
   teams: readonly Team[] = [],
+  boxWidth: BoxWidth = "normal",
 ): LayoutGraph {
   const steps = [...process.steps].sort((a, b) => a.displayNo - b.displayNo);
   const byId = new Map(steps.map((s) => [s.id, s]));
@@ -225,6 +236,7 @@ export function buildLayoutGraph(
         validLinks.length >= 2,
         annotations,
         teamNames(s.teamIds, teams).join(", "),
+        boxWidth,
       ),
       pinFirst: s.type === "start",
       stepId: s.id,

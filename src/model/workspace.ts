@@ -44,6 +44,7 @@ export function createEmptyWorkspace(name = "Untitled workspace"): Workspace {
       splitRatio: 0.5,
       activeProcessId: process.id,
       annotations: "full",
+      boxWidth: "normal",
       highlightTeamId: null,
       teamFocus: "highlight",
     },

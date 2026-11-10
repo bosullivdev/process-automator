@@ -10,6 +10,7 @@ import { ProcessSwitcher } from "./components/ProcessSwitcher";
 import { ExportMenu, ImportButton, StorageNotice } from "./components/ExportMenu";
 import { Toaster } from "./components/ui/Toaster";
 import { buildLayoutGraph } from "./graph/build-graph";
+import type { BoxWidth } from "./model/types";
 import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
 import { useApplyTheme } from "./hooks/useTheme";
 import { useLayout } from "./hooks/useLayout";
@@ -97,10 +98,20 @@ export default function App() {
             view.orientation,
             view.annotations,
             teams,
+            view.boxWidth,
           )
         : { laneOrder: [], nodes: [], edges: [] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shown, parties, teams, view.shapeMode, view.orientation, view.annotations, fontsReady],
+    [
+      shown,
+      parties,
+      teams,
+      view.shapeMode,
+      view.orientation,
+      view.annotations,
+      view.boxWidth,
+      fontsReady,
+    ],
   );
   const { layout, updating } = useLayout(graph, view.orientation);
 
@@ -190,6 +201,18 @@ export default function App() {
         >
           {view.annotations === "full" ? "Details" : "Minimal"}
         </button>
+        <select
+          className="input h-8 w-32"
+          aria-label="Box width"
+          title="How wide step boxes are drawn; long names wrap to fewer lines in a wider box"
+          value={view.boxWidth}
+          onChange={(e) => setView({ boxWidth: e.target.value as BoxWidth })}
+        >
+          <option value="narrow">Narrow boxes</option>
+          <option value="normal">Normal boxes</option>
+          <option value="wide">Wide boxes</option>
+          <option value="extra">Extra wide</option>
+        </select>
         <span
           className="flex items-center gap-1 text-xs text-[var(--text-muted)]"
           data-testid="save-status"

@@ -61,6 +61,7 @@ const viewSchema = z.object({
   activeProcessId: z.string().nullable(),
   // Added after the first release; older files load with the default.
   annotations: z.enum(["full", "minimal"]).default("full"),
+  boxWidth: z.enum(["narrow", "normal", "wide", "extra"]).default("normal"),
   highlightTeamId: z.string().nullable().default(null),
   teamFocus: z.enum(["highlight", "isolate"]).default("highlight"),
 });
