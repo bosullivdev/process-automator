@@ -59,7 +59,7 @@ export function processToCsv(
     return [
       String(s.displayNo),
       s.name,
-      partyName(s.ownerId),
+      [s.ownerId, ...s.coOwnerIds].map(partyName).join("; "),
       typeLabel(s),
       next,
       s.technology,

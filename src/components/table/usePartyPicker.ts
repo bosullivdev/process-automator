@@ -18,9 +18,9 @@ export type PickerItem<T extends Named = Party> =
   | { kind: "party"; party: T; near?: boolean }
   | { kind: "create"; name: string }
   | { kind: "clear" }
-  /** Owner only: copy this step into another party's lane as well. */
+  /** Owner only: draw this step in another party's lane as well (a co-owner). */
   | { kind: "share"; party: T }
-  /** Owner only: several teams typed at once; the first owns, the rest get copies. */
+  /** Owner only: several teams typed at once; the first owns, the rest are co-owners. */
   | { kind: "multi"; parts: OwnerPart<T>[] };
 
 /**

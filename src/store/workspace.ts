@@ -118,10 +118,10 @@ export interface StoreState extends DocState {
   setStepOwner: (processId: string, stepId: string, partyId: string | null) => void;
   /**
    * Give a step several responsible teams in one undoable edit: the first
-   * becomes the owner, each further team gets a linked copy in its own lane.
-   * Returns the IDs of the copies.
+   * becomes the owner, the rest its co-owners; the step stays one row and is
+   * drawn in every one of their lanes. One party alone clears the co-owners.
    */
-  assignOwners: (processId: string, stepId: string, partyIds: string[]) => string[];
+  assignOwners: (processId: string, stepId: string, partyIds: string[]) => void;
   setStepNext: (processId: string, stepId: string, next: NextLink[]) => void;
   /** Scope a step to some teams; an empty list means every team. */
   setStepTeams: (processId: string, stepId: string, teamIds: string[]) => void;
@@ -291,19 +291,16 @@ export const useStore = create<StoreState>()(
             const s = proc?.steps.find((x) => x.id === stepId);
             if (!proc || !s) return;
             s.ownerId = partyId;
+            // The new owner is no longer a co-owner; an unassigned step has none.
+            s.coOwnerIds = partyId === null ? [] : s.coOwnerIds.filter((c) => c !== partyId);
             ensureLane(proc, partyId);
           }),
-        assignOwners: (processId, stepId, partyIds) => {
-          let copyIds: string[] = [];
+        assignOwners: (processId, stepId, partyIds) =>
           edit((d) => {
             const idx = d.processes.findIndex((p) => p.id === processId);
             if (idx < 0) return;
-            const result = assignOwnersPure(d.processes[idx], stepId, partyIds, d.parties);
-            d.processes[idx] = result.process;
-            copyIds = result.copyIds;
-          });
-          return copyIds;
-        },
+            d.processes[idx] = assignOwnersPure(d.processes[idx], stepId, partyIds);
+          }),
         setStepNext: (processId, stepId, next) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);

@@ -250,19 +250,17 @@ export function StepTable({ process, flags, focus }: Props) {
         isolate && sharedWithOthers(step)
           ? forkStepForTeam(process.id, step.id, isolate.teamId)
           : null;
-      const copyIds = assignOwners(process.id, forked ?? step.id, partyIds);
-      if (copyIds.length === 0) return;
-      const proc = useStore.getState().processes.find((p) => p.id === process.id);
+      assignOwners(process.id, forked ?? step.id, partyIds);
       const names = useStore.getState().parties;
-      const where = copyIds
-        .map((id) => proc?.steps.find((s) => s.id === id))
-        .filter((s): s is Step => !!s)
-        .map((s) => `${names.find((p) => p.id === s.ownerId)?.name ?? "?"} (step ${s.displayNo})`)
-        .join(", ");
-      toast(`Copied step ${step.displayNo} to ${where}, with the same links.`, {
-        label: "Undo",
-        onClick: () => undo(),
-      });
+      const also = partyIds.slice(1).map((id) => names.find((p) => p.id === id)?.name ?? "?");
+      if (also.length === 0) return;
+      toast(
+        `Step ${step.displayNo} is also drawn in ${also.join(", ")}'s lane. It stays one row.`,
+        {
+          label: "Undo",
+          onClick: () => undo(),
+        },
+      );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [assignOwners, forkStepForTeam, isolate, process.id, teams],
@@ -370,6 +368,7 @@ export function StepTable({ process, flags, focus }: Props) {
                 <Td>
                   <OwnerCombobox
                     value={step.ownerId}
+                    coOwnerIds={step.coOwnerIds}
                     parties={parties}
                     onChange={(id) => changeOwner(step, id)}
                     onAssign={(ids) => assign(step, ids)}

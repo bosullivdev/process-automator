@@ -169,6 +169,17 @@ export function validateProcess(
         message: `Step ${label(s.id)} is owned by a party that is not in the registry.`,
       });
     }
+    for (const c of s.coOwnerIds) {
+      if (!partyIds.has(c)) {
+        flags.push({
+          severity: "error",
+          code: "unknown-party",
+          stepId: s.id,
+          partyId: c,
+          message: `Step ${label(s.id)} lists a co-owner that is not in the registry.`,
+        });
+      }
+    }
     for (const c of s.contributorIds) {
       if (!partyIds.has(c)) {
         flags.push({

@@ -15,6 +15,8 @@ const stepSchema = z.object({
   name: z.string(),
   type: z.enum(["start", "task", "decision", "end"]),
   ownerId: z.string().nullable(),
+  // Added with co-owned steps; older files load with none.
+  coOwnerIds: z.array(z.string()).default([]),
   next: z.array(nextLinkSchema),
   technology: z.string(),
   contributorIds: z.array(z.string()),

@@ -18,6 +18,7 @@ export function step(partial: Partial<Step> & { displayNo: number; id: string })
     name: `Step ${displayNo}`,
     type: "task",
     ownerId: null,
+    coOwnerIds: [],
     next: [],
     technology: "",
     contributorIds: [],

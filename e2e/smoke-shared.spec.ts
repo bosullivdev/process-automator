@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("a step given two teams is copied into both lanes with the same links", async ({ page }) => {
+test("a step given two parties stays one row and is drawn in both lanes", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
@@ -34,35 +34,40 @@ test("a step given two teams is copied into both lanes with the same links", asy
   const owner = page.getByLabel("Owner").nth(1);
   await owner.fill("Sales, Legal");
   await expect(page.getByRole("option", { name: /Sales owns/ })).toBeVisible();
-  await expect(page.getByRole("option", { name: /Copy to Legal \(new\)/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Also Legal \(new\)/ })).toBeVisible();
   await page.keyboard.press("Enter");
 
-  // A copy appears right under the original, owned by Legal.
-  await expect(page.getByLabel("Step name")).toHaveCount(4);
-  await expect(page.getByLabel("Owner").nth(1)).toHaveValue("Sales");
-  await expect(page.getByLabel("Step name").nth(2)).toHaveValue("Review contract");
-  await expect(page.getByLabel("Owner").nth(2)).toHaveValue("Legal");
-  await expect(page.getByLabel("Next steps").nth(2)).toContainText("Signed");
-  await expect(page.getByLabel("Next steps").nth(0)).toContainText("Review contract");
-  await expect(page.getByRole("status")).toContainText("Copied step 2 to Legal (step 4)");
+  // Still three rows; the cell names both parties.
+  await expect(page.getByLabel("Step name")).toHaveCount(3);
+  await expect(page.getByLabel("Owner").nth(1)).toHaveValue("Sales, Legal");
+  await expect(page.getByRole("status")).toContainText("also drawn in Legal's lane");
 
-  // Map: two lanes, four nodes, fork from start and join into the end.
+  // Map: two lanes, the review drawn twice, fork from the start and join into the end.
   const map = page.getByTestId("map");
   await expect(map.locator("[data-lane-id]")).toHaveCount(2);
   await expect(map.locator("[data-node-id]")).toHaveCount(4);
   await expect(map.locator("[data-edge-id]")).toHaveCount(4);
   await expect(map.getByText("Legal")).toBeVisible();
 
-  // The "Also X" option shares with an existing party.
+  // Both copies belong to the one step.
+  const stepIds = await map
+    .locator("[data-node-id]")
+    .evaluateAll((els) => els.map((e) => e.getAttribute("data-step-id")));
+  expect(new Set(stepIds).size).toBe(3);
+
+  // The "Also X" option adds a co-owner to a step that already has an owner.
   await page.getByLabel("Owner").nth(0).fill("Legal");
   await page.getByRole("option", { name: /Also Legal/ }).click();
-  await expect(page.getByLabel("Step name")).toHaveCount(5);
-  await expect(page.getByLabel("Owner").nth(0)).toHaveValue("Sales");
-  await expect(page.getByLabel("Owner").nth(1)).toHaveValue("Legal");
-  await expect(page.getByLabel("Step name").nth(1)).toHaveValue("Receive contract");
+  await expect(page.getByLabel("Step name")).toHaveCount(3);
+  await expect(page.getByLabel("Owner").nth(0)).toHaveValue("Sales, Legal");
+  await expect(map.locator("[data-node-id]")).toHaveCount(5);
 
-  // One undo reverts the whole share.
+  // Picking one party again clears the co-owner; undo brings it back.
+  await page.getByLabel("Owner").nth(0).fill("Sales");
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Owner").nth(0)).toHaveValue("Sales");
+  await expect(map.locator("[data-node-id]")).toHaveCount(4);
   await page.getByRole("button", { name: "Undo" }).first().click();
-  await expect(page.getByLabel("Step name")).toHaveCount(4);
+  await expect(page.getByLabel("Owner").nth(0)).toHaveValue("Sales, Legal");
   expect(errors).toEqual([]);
 });

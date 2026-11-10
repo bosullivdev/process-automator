@@ -287,7 +287,9 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
       default:
         geometry = relGeometry(RECT);
     }
-    const owner = step?.ownerId ? (partyById.get(step.ownerId)?.name ?? "Unknown party") : "";
+    // A co-owned step is drawn once per lane; each copy names its own lane's party.
+    const laneParty = partyById.get(ln.laneId);
+    const owner = !step ? "" : (laneParty?.name ?? (step.ownerId ? "Unknown party" : ""));
     const text = stepText(step, ln);
     const labelW = Math.max(ln.text.labelWidth / PX, 1.2);
     const labelH = Math.max((ln.text.nameLines.length * 14) / PX + 0.1, 0.25);

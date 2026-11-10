@@ -305,6 +305,7 @@ export function forkStepForTeam(
     id: newId(),
     displayNo: nextDisplayNo(process),
     teamIds: own,
+    coOwnerIds: [...x.coOwnerIds],
     contributorIds: [...x.contributorIds],
     next: x.next
       .filter((l) => linkInTeam(l, teamId) && inRoute.has(l.targetId))

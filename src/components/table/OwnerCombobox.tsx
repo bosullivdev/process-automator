@@ -9,12 +9,15 @@ import { usePartyPicker, type OwnerPart, type PickerItem } from "./usePartyPicke
 
 interface Props {
   value: string | null;
+  /** Further parties the step is drawn for; shown after the owner as "Sales, Legal". */
+  coOwnerIds: string[];
   parties: Party[];
   onChange: (partyId: string | null) => void;
   /**
-   * Several responsible teams: the first owns the step, each further one
-   * gets a linked copy in its own lane. Entered as "Sales, Legal" or via the
-   * "Also X" option.
+   * Several responsible teams: the first owns the step, the rest are its
+   * co-owners, and the one row is drawn in every one of their lanes. Entered
+   * as "Sales, Legal" or via the "Also X" option. One id alone clears the
+   * co-owners.
    */
   onAssign: (partyIds: string[]) => void;
   onCreateParty: (name: string) => string;
@@ -30,6 +33,7 @@ function resolvePart(name: string, parties: readonly Party[]): OwnerPart {
 
 export function OwnerCombobox({
   value,
+  coOwnerIds,
   parties,
   onChange,
   onAssign,
@@ -37,16 +41,32 @@ export function OwnerCombobox({
   ariaLabel,
 }: Props) {
   const current = parties.find((p) => p.id === value) ?? null;
-  // null = "not editing": show the current party name.
+  const coOwners = useMemo(
+    () =>
+      current
+        ? coOwnerIds
+            .filter((id) => id !== current.id)
+            .map((id) => parties.find((p) => p.id === id))
+            .filter((p): p is Party => !!p)
+        : [],
+    [coOwnerIds, current, parties],
+  );
+  // What the cell shows when not being edited: every party, owner first.
+  const settled = current ? [current, ...coOwners].map((p) => p.name).join(", ") : "";
+  // null = "not editing": show the settled text.
   const [draft, setDraft] = useState<string | null>(null);
-  const query = draft ?? current?.name ?? "";
+  const editing = draft !== null;
+  const query = draft ?? settled;
   const [open, setOpenRaw] = useState(false);
   const [activeOverride, setActiveOverride] = useState<number | null>(null);
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
 
-  const base = usePartyPicker(query, parties, { allowClear: true });
+  // Until the user types, the list is the registry around the owner, not a search for "Sales, Legal".
+  const base = usePartyPicker(editing ? query : (current?.name ?? ""), parties, {
+    allowClear: true,
+  });
   const { items, defaultIndex } = useMemo(() => {
-    const parts = splitOwnerQuery(query);
+    const parts = editing ? splitOwnerQuery(query) : [];
     if (parts.length >= 2) {
       const multi: PickerItem = {
         kind: "multi",
@@ -57,6 +77,7 @@ export function OwnerCombobox({
     if (!current || parts.length === 0) return base;
     const m = matchParty(query, parties);
     if (m.kind === "new" || m.party.id === current.id) return base;
+    if (coOwners.some((p) => p.id === m.party.id)) return base;
     // Offer to share with the matched party, just after the party entries.
     const at = base.items.findIndex((i) => i.kind === "create" || i.kind === "clear");
     const idx = at < 0 ? base.items.length : at;
@@ -66,7 +87,7 @@ export function OwnerCombobox({
       items: list,
       defaultIndex: base.defaultIndex >= idx ? base.defaultIndex + 1 : base.defaultIndex,
     };
-  }, [base, current, parties, query]);
+  }, [base, coOwners, current, editing, parties, query]);
 
   const active = activeOverride ?? defaultIndex;
   const setActive = (fn: number | ((a: number) => number)) =>
@@ -83,19 +104,33 @@ export function OwnerCombobox({
     }
   };
 
+  const shared = coOwners.length > 0;
   const commit = useCallback(
     (item: PickerItem | undefined) => {
       if (!item) {
         if (query.trim() === "") onChange(null);
-      } else if (item.kind === "party") onChange(item.party.id);
-      else if (item.kind === "create") onChange(onCreateParty(item.name));
-      else if (item.kind === "share") onAssign([current!.id, item.party.id]);
-      else if (item.kind === "multi") {
+      } else if (item.kind === "party") {
+        if (item.party.id !== current?.id) {
+          // Another party replaces the whole group.
+          if (shared) onAssign([item.party.id]);
+          else onChange(item.party.id);
+        } else if (shared && editing && query.trim() !== settled) {
+          // Typing just the owner's name again drops the co-owners; merely
+          // opening the list and confirming the owner changes nothing.
+          onAssign([item.party.id]);
+        }
+      } else if (item.kind === "create") {
+        const id = onCreateParty(item.name);
+        if (shared) onAssign([id]);
+        else onChange(id);
+      } else if (item.kind === "share") {
+        onAssign([current!.id, ...coOwners.map((p) => p.id), item.party.id]);
+      } else if (item.kind === "multi") {
         onAssign(item.parts.map((p) => p.party?.id ?? onCreateParty(p.name)));
       } else onChange(null);
       setOpen(false);
     },
-    [current, onAssign, onChange, onCreateParty, query],
+    [coOwners, current, editing, onAssign, onChange, onCreateParty, query, settled, shared],
   );
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -112,7 +147,7 @@ export function OwnerCombobox({
       if (open) commit(items[active]);
       else setOpen(true);
     } else if (e.key === "Tab") {
-      if (open && query.trim() !== (current?.name ?? "")) commit(items[active]);
+      if (open && query.trim() !== settled) commit(items[active]);
       else setOpen(false);
     } else if (e.key === "Escape") {
       setOpen(false);
@@ -121,13 +156,18 @@ export function OwnerCombobox({
 
   const onBlur = () => {
     if (!open) return;
-    if (query.trim() !== (current?.name ?? "").trim()) commit(items[active]);
+    if (query.trim() !== settled) commit(items[active]);
     else setOpen(false);
   };
 
   return (
     <div ref={setAnchor} className="flex h-full items-center gap-1.5 pl-2">
-      <PartySwatch party={current} />
+      <span className="flex shrink-0 items-center gap-0.5">
+        <PartySwatch party={current} />
+        {coOwners.map((p) => (
+          <PartySwatch key={p.id} party={p} />
+        ))}
+      </span>
       <input
         role="combobox"
         aria-expanded={open}
@@ -136,7 +176,7 @@ export function OwnerCombobox({
         className="cell-input pl-0"
         value={query}
         placeholder="Unassigned"
-        title="One team, or several separated by commas: the first owns the step and each other team gets a copy in its own lane."
+        title="One team, or several separated by commas: the first owns the step and the rest also do it, so the one row is drawn in each of their lanes."
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);

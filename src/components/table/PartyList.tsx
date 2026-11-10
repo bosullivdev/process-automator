@@ -31,7 +31,7 @@ export function PartyList<T extends Named>({
     <ul role="listbox" className="flex flex-col">
       {items.map((item, i) => {
         const key = item.kind === "party" ? item.party.id : item.kind;
-        const copies = item.kind === "multi" ? item.parts.slice(1) : [];
+        const also = item.kind === "multi" ? item.parts.slice(1) : [];
         return (
           <li
             key={key}
@@ -75,7 +75,7 @@ export function PartyList<T extends Named>({
                     Also <strong>{item.party.name}</strong>
                   </span>
                   <span className="truncate text-xs text-[var(--text-muted)]">
-                    Copy this step into their lane, same links
+                    Drawn in their lane too; still one row
                   </span>
                 </span>
               </>
@@ -91,12 +91,13 @@ export function PartyList<T extends Named>({
                 </span>
                 <span className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-muted)]">
                   <span className="flex shrink-0 items-center gap-0.5">
-                    {copies.map((p) => (
+                    {also.map((p) => (
                       <span key={p.name}>{swatch(p.party, 8)}</span>
                     ))}
                   </span>
                   <span className="truncate">
-                    Copy to {copies.map((p) => p.name + (p.party ? "" : " (new)")).join(", ")}
+                    Also {also.map((p) => p.name + (p.party ? "" : " (new)")).join(", ")}; one row,
+                    drawn in each lane
                   </span>
                 </span>
               </span>

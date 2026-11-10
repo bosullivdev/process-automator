@@ -56,18 +56,22 @@ describe("store undo/redo", () => {
     const b = useStore.getState().addStep(procId, { partial: { name: "Review", ownerId: sales } });
     useStore.getState().setStepNext(procId, a, [{ targetId: b }]);
 
-    const copies = useStore.getState().assignOwners(procId, b, [sales, legal]);
+    useStore.getState().assignOwners(procId, b, [sales, legal]);
     let proc = useStore.getState().processes[0];
-    expect(copies).toHaveLength(1);
-    expect(proc.steps.map((x) => x.id)).toEqual([a, b, copies[0]]);
-    expect(proc.steps[2]).toMatchObject({ name: "Review", ownerId: legal, displayNo: 3 });
-    expect(proc.steps[0].next).toEqual([{ targetId: b }, { targetId: copies[0] }]);
+    expect(proc.steps.map((x) => x.id)).toEqual([a, b]);
+    expect(proc.steps[1]).toMatchObject({ name: "Review", ownerId: sales, coOwnerIds: [legal] });
+    expect(proc.steps[0].next).toEqual([{ targetId: b }]);
     expect(proc.laneOrder).toEqual([sales, legal]);
 
+    // Setting a plain owner again clears the co-owners.
+    useStore.getState().setStepOwner(procId, b, legal);
+    proc = useStore.getState().processes[0];
+    expect(proc.steps[1]).toMatchObject({ ownerId: legal, coOwnerIds: [] });
+
+    undo();
     undo();
     proc = useStore.getState().processes[0];
-    expect(proc.steps.map((x) => x.id)).toEqual([a, b]);
-    expect(proc.steps[0].next).toEqual([{ targetId: b }]);
+    expect(proc.steps[1]).toMatchObject({ ownerId: sales, coOwnerIds: [] });
     expect(proc.laneOrder).toEqual([sales]);
   });
 

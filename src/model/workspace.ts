@@ -11,6 +11,7 @@ export function createStep(partial: Partial<Step> & { displayNo: number }): Step
     name: "",
     type: "task",
     ownerId: null,
+    coOwnerIds: [],
     next: [],
     technology: "",
     contributorIds: [],

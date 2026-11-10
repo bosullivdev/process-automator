@@ -46,6 +46,11 @@ export interface Step {
   name: string;
   type: StepType;
   ownerId: string | null; // null = Unassigned lane
+  /**
+   * Further parties that also do this step. The step stays one row; the map
+   * draws it once in each co-owner's lane with the same links as the owner's.
+   */
+  coOwnerIds: string[];
   next: NextLink[]; // empty allowed only on "end"
   technology: string;
   contributorIds: string[]; // party IDs

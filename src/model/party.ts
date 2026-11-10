@@ -91,7 +91,7 @@ export function partyUsage(partyId: string, processes: readonly Process[]): Part
     let asOwner = 0;
     let asContributor = 0;
     for (const s of p.steps) {
-      if (s.ownerId === partyId) asOwner++;
+      if (s.ownerId === partyId || s.coOwnerIds.includes(partyId)) asOwner++;
       if (s.contributorIds.includes(partyId)) asContributor++;
     }
     const inLaneOrder = p.laneOrder.includes(partyId);
@@ -107,7 +107,7 @@ export function isPartyReferenced(partyId: string, processes: readonly Process[]
 }
 
 /**
- * Merge `droppedId` into `survivorId`: every ownerId and contributorId across
+ * Merge `droppedId` into `survivorId`: every ownerId, coOwnerId and contributorId across
  * every process is updated, lane order keeps the survivor's slot (or takes the
  * dropped party's slot if the survivor was not in the lane), and the dropped
  * party is removed, releasing its colourIndex.
@@ -123,7 +123,10 @@ export function mergeParties(ws: Workspace, survivorId: string, droppedId: strin
       const contributorIds = Array.from(
         new Set(s.contributorIds.map((c) => (c === droppedId ? survivorId : c))),
       );
-      return { ...s, ownerId, contributorIds };
+      const coOwnerIds = Array.from(
+        new Set(s.coOwnerIds.map((c) => (c === droppedId ? survivorId : c))),
+      ).filter((c) => c !== ownerId);
+      return { ...s, ownerId, coOwnerIds, contributorIds };
     });
     let laneOrder = proc.laneOrder;
     if (laneOrder.includes(droppedId)) {

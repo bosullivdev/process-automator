@@ -28,16 +28,16 @@ a static site.
 - **Owner / Contributors**: comboboxes over the party registry. An exact
   match links the existing party; a near match offers "Use X?"; otherwise a
   new party is created with the next free colour.
-- **Shared steps**: a step belongs to one lane, so a task two teams both do
-  is drawn once per team. Type several teams in the Owner cell separated by
-  commas ("Sales, Legal"), or pick "Also Legal" from the dropdown of a step
-  that already has an owner. The first team owns the row; each further team
-  gets a copy of the step in its own lane with the same name, type,
-  technology, notes and Next links, and every step that led to the original
-  also leads to the copy, so the map shows a fork into both lanes and a join
-  afterwards. A decision leading in gets its outcome repeated as
-  "Yes (Legal)" so labels stay unique. Teams in the group are removed from
-  the contributors of the shared steps. One undo reverts the whole thing.
+- **Shared steps**: a task that two parties both do stays one row in the
+  table but is drawn once in each party's lane on the map. Type several
+  parties in the Owner cell separated by commas ("Sales, Legal"), or type a
+  party's name into a step that already has an owner and pick "Also Legal".
+  The first party owns the row; the rest are co-owners and the cell shows
+  them all. Every copy on the map carries the same links, so the step before
+  fans out into each lane and the steps after join them again; in BPMN mode
+  that is drawn with parallel gateways. Parties in the group are removed from
+  the step's contributors. Picking a single party again clears the co-owners.
+  One undo reverts the whole thing.
 - **Teams**: when several teams run their own variant of the same process,
   build one team's process in full, then open the Team menu, "Manage teams…",
   add the first team and add the next one with "Start from" set to it. The new

@@ -1,4 +1,4 @@
-import type { Party, Process, Step, Team } from "../model/types";
+import type { NextLink, Party, Process, Step, Team } from "../model/types";
 import { teamNames } from "../model/team";
 import { buildAdjacency, canReachEnd } from "./analysis";
 import {
@@ -159,19 +159,26 @@ export function sizeStep(
 
 export type ShapeMode = "simple" | "bpmn";
 
-export function forkId(stepId: string): string {
-  return `gw:fork:${stepId}`;
+/** Gateway node ids take the node they belong to (a step id, or a co-owner copy's id). */
+export function forkId(nodeId: string): string {
+  return `gw:fork:${nodeId}`;
 }
-export function joinId(stepId: string): string {
-  return `gw:join:${stepId}`;
+export function joinId(nodeId: string): string {
+  return `gw:join:${nodeId}`;
+}
+/** Node id of a step's copy in a co-owner's lane; the owner's lane keeps the step id itself. */
+export function laneNodeId(stepId: string, laneId: string): string {
+  return `${stepId}@${laneId}`;
 }
 
 /**
  * Pure function from workspace data to the graph handed to layout. Nodes and
  * edges are emitted in displayNo order so layout is deterministic. Links to
- * missing steps and self-links are dropped (validation flags them). In BPMN
- * mode, parallel gateways are inserted after a task with two or more next
- * links and before a step with two or more incoming links.
+ * missing steps and self-links are dropped (validation flags them). A step
+ * with co-owners is drawn once per lane: every node of it carries the step's
+ * links, so the step before fans out to every lane and the steps after join
+ * them. In BPMN mode, parallel gateways are inserted after a task with two or
+ * more outgoing arrows and before a node with two or more incoming arrows.
  */
 export function buildLayoutGraph(
   process: Process,
@@ -190,86 +197,129 @@ export function buildLayoutGraph(
   const nodes: LayoutNode[] = [];
   const edges: LayoutEdge[] = [];
 
-  const incoming = new Map<string, number>();
+  // Lanes each step is drawn in, in order; the first node keeps the step id.
+  const lanesOf = new Map<string, string[]>();
+  const nodeIdsOf = new Map<string, string[]>();
   for (const s of steps) {
+    const lanes = [laneOf(s.ownerId)];
+    for (const id of s.coOwnerIds) if (partyIds.has(id) && !lanes.includes(id)) lanes.push(id);
+    lanesOf.set(s.id, lanes);
+    nodeIdsOf.set(
+      s.id,
+      lanes.map((lane, i) => (i === 0 ? s.id : laneNodeId(s.id, lane))),
+    );
+  }
+
+  /*
+   * Arrows between nodes. A link from step s to step t joins each copy of s
+   * to each copy of t, except that a party's own copies stay together: when
+   * both steps are drawn in the same lane, that lane's copies link to each
+   * other only. So two consecutive steps shared by the same parties give one
+   * clean run per lane; a lane that has only one of the steps fans out to, or
+   * joins from, every copy of the other.
+   */
+  interface Arrow {
+    link: NextLink;
+    from: string;
+    to: string;
+  }
+  const arrowsFrom = new Map<string, Arrow[]>();
+  const outCount = new Map<string, number>();
+  const inCount = new Map<string, number>();
+  for (const s of steps) {
+    const sLanes = lanesOf.get(s.id)!;
+    const sIds = nodeIdsOf.get(s.id)!;
+    const list: Arrow[] = [];
     for (const l of s.next) {
-      if (l.targetId !== s.id && byId.has(l.targetId)) {
-        incoming.set(l.targetId, (incoming.get(l.targetId) ?? 0) + 1);
-      }
+      if (l.targetId === s.id || !byId.has(l.targetId)) continue;
+      const tLanes = lanesOf.get(l.targetId)!;
+      const tIds = nodeIdsOf.get(l.targetId)!;
+      sLanes.forEach((ls, si) => {
+        tLanes.forEach((lt, ti) => {
+          if (ls !== lt && tLanes.includes(ls) && sLanes.includes(lt)) return;
+          const from = sIds[si];
+          const to = tIds[ti];
+          list.push({ link: l, from, to });
+          outCount.set(from, (outCount.get(from) ?? 0) + 1);
+          inCount.set(to, (inCount.get(to) ?? 0) + 1);
+        });
+      });
     }
+    arrowsFrom.set(s.id, list);
   }
 
   const bpmn = mode === "bpmn";
   const dashedEdges = bpmn ? terminateDashedEdges(process) : new Set<string>();
+  const hasJoin = (nodeId: string) => bpmn && (inCount.get(nodeId) ?? 0) >= 2;
+  const hasFork = (step: Step, nodeId: string) =>
+    bpmn && step.type === "task" && (outCount.get(nodeId) ?? 0) >= 2;
 
   for (const s of steps) {
-    const lane = laneOf(s.ownerId);
-    const hasJoin = bpmn && (incoming.get(s.id) ?? 0) >= 2;
-    if (hasJoin) {
+    const lanes = lanesOf.get(s.id)!;
+    nodeIdsOf.get(s.id)!.forEach((id, i) => {
+      const lane = lanes[i];
+      if (hasJoin(id)) {
+        nodes.push({
+          id: joinId(id),
+          kind: "join",
+          laneId: lane,
+          ...sizeGateway("join"),
+          stepId: s.id,
+        });
+      }
       nodes.push({
-        id: joinId(s.id),
-        kind: "join",
+        id,
+        kind: s.type,
         laneId: lane,
-        ...sizeGateway("join"),
+        ...sizeStep(
+          s,
+          orientation,
+          (outCount.get(id) ?? 0) >= 2,
+          annotations,
+          teamNames(s.teamIds, teams).join(", "),
+        ),
+        pinFirst: s.type === "start",
         stepId: s.id,
       });
-    }
-    const validLinks = s.next.filter((l) => l.targetId !== s.id && byId.has(l.targetId));
-    nodes.push({
-      id: s.id,
-      kind: s.type,
-      laneId: lane,
-      ...sizeStep(
-        s,
-        orientation,
-        validLinks.length >= 2,
-        annotations,
-        teamNames(s.teamIds, teams).join(", "),
-      ),
-      pinFirst: s.type === "start",
-      stepId: s.id,
+      if (hasFork(s, id)) {
+        nodes.push({
+          id: forkId(id),
+          kind: "fork",
+          laneId: lane,
+          ...sizeGateway("fork"),
+          stepId: s.id,
+        });
+        edges.push({
+          id: `${id}->${forkId(id)}`,
+          from: id,
+          to: forkId(id),
+          sourceStepId: s.id,
+          targetStepId: s.id,
+        });
+      }
     });
-    const hasFork = bpmn && s.type === "task" && validLinks.length >= 2;
-    if (hasFork) {
-      nodes.push({
-        id: forkId(s.id),
-        kind: "fork",
-        laneId: lane,
-        ...sizeGateway("fork"),
-        stepId: s.id,
-      });
+    for (const a of arrowsFrom.get(s.id)!) {
       edges.push({
-        id: `${s.id}->${forkId(s.id)}`,
-        from: s.id,
-        to: forkId(s.id),
+        id: `${a.from}->${a.to}`,
+        from: hasFork(s, a.from) ? forkId(a.from) : a.from,
+        to: hasJoin(a.to) ? joinId(a.to) : a.to,
+        label: s.type === "decision" ? a.link.label?.trim() || "?" : undefined,
+        isDefault: s.type === "decision" ? !!a.link.isDefault : undefined,
+        dashed: dashedEdges.has(`${s.id}->${a.link.targetId}`) || undefined,
         sourceStepId: s.id,
-        targetStepId: s.id,
-      });
-    }
-    const from = hasFork ? forkId(s.id) : s.id;
-    for (const l of validLinks) {
-      const targetHasJoin = bpmn && (incoming.get(l.targetId) ?? 0) >= 2;
-      const to = targetHasJoin ? joinId(l.targetId) : l.targetId;
-      edges.push({
-        id: `${s.id}->${l.targetId}`,
-        from,
-        to,
-        label: s.type === "decision" ? l.label?.trim() || "?" : undefined,
-        isDefault: s.type === "decision" ? !!l.isDefault : undefined,
-        dashed: dashedEdges.has(`${s.id}->${l.targetId}`) || undefined,
-        sourceStepId: s.id,
-        targetStepId: l.targetId,
+        targetStepId: a.link.targetId,
       });
     }
   }
-  // Join gateway -> step edges.
+  // Join gateway -> node edges.
   if (bpmn) {
     for (const s of steps) {
-      if ((incoming.get(s.id) ?? 0) >= 2) {
+      for (const id of nodeIdsOf.get(s.id)!) {
+        if (!hasJoin(id)) continue;
         edges.push({
-          id: `${joinId(s.id)}->${s.id}`,
-          from: joinId(s.id),
-          to: s.id,
+          id: `${joinId(id)}->${id}`,
+          from: joinId(id),
+          to: id,
           sourceStepId: s.id,
           targetStepId: s.id,
           dashed: dashedEdges.has(`join:${s.id}`) || undefined,
