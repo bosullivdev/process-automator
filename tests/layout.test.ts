@@ -2,10 +2,24 @@ import { describe, expect, it } from "vitest";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { buildLayoutGraph } from "../src/graph/build-graph";
 import { layoutGraph } from "../src/graph/layout";
-import { UNASSIGNED_LANE } from "../src/graph/layout-types";
+import { UNASSIGNED_LANE, type LayoutResult } from "../src/graph/layout-types";
 import { party, process, step } from "./fixtures";
 
 const elk = new ELK();
+
+/** Shape centre and edges of a laid-out node in map coordinates (horizontal orientation). */
+function shape(graph: ReturnType<typeof buildLayoutGraph>, r: LayoutResult, id: string) {
+  const g = graph.nodes.find((n) => n.id === id)!;
+  const n = r.nodes.find((p) => p.id === id)!;
+  return {
+    cx: n.x + g.cx,
+    cy: n.y + g.cy,
+    top: n.y + g.cy - g.shapeHeight / 2,
+    bottom: n.y + g.cy + g.shapeHeight / 2,
+    left: n.x + g.cx - g.shapeWidth / 2,
+    right: n.x + g.cx + g.shapeWidth / 2,
+  };
+}
 
 function fixture() {
   const sales = party("Sales", 0);
@@ -75,7 +89,7 @@ describe("layout", () => {
     expect(vStart.y).toBeLessThan(vEnd.y);
   });
 
-  it("places every node inside its lane and routes back-edges outside the band", async () => {
+  it("places every node inside its lane and loops back-edges into the target's shape", async () => {
     const { proc, parties } = fixture();
     const graph = buildLayoutGraph(proc, parties, "simple");
     const r = await layoutGraph(graph, "horizontal", elk);
@@ -85,10 +99,15 @@ describe("layout", () => {
       expect(n.y).toBeGreaterThanOrEqual(lane.y);
       expect(n.y + n.height).toBeLessThanOrEqual(lane.y + lane.height);
     }
+    // The "Rework" feedback loops back inside the band and enters b from below.
     const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
     const back = r.edges.find((e) => e.id === "c->b")!;
-    expect(Math.max(...back.points.map((p) => p.y))).toBeGreaterThan(bandBottom);
-    expect(r.height).toBeGreaterThan(bandBottom);
+    expect(Math.max(...back.points.map((p) => p.y))).toBeLessThan(bandBottom);
+    const b = shape(graph, r, "b");
+    const last = back.points[back.points.length - 1];
+    expect(last.x).toBeCloseTo(b.cx);
+    expect(last.y).toBeCloseTo(b.bottom);
+    expect(r.height).toBeGreaterThanOrEqual(bandBottom);
     // labels exist for decision outcomes
     expect(
       r.edges
@@ -315,5 +334,137 @@ describe("same-row alignment", () => {
         expect(e.points, `${orientation} ${id}`).toHaveLength(2);
       }
     }
+  });
+});
+
+describe("feedback loops", () => {
+  /** start -> Review -> "Understood?" with "No" back to Review, all in one lane. */
+  function loopFixture() {
+    const fin = party("Finance", 0);
+    const proc = process(
+      [
+        step({ id: "s", displayNo: 1, type: "start", ownerId: fin.id, next: [{ targetId: "r" }] }),
+        step({
+          id: "r",
+          displayNo: 2,
+          name: "Review central targets",
+          ownerId: fin.id,
+          next: [{ targetId: "q" }],
+        }),
+        step({
+          id: "q",
+          displayNo: 3,
+          type: "decision",
+          name: "Are the requirements understood?",
+          ownerId: fin.id,
+          next: [
+            { targetId: "e", label: "Yes" },
+            { targetId: "r", label: "No" },
+          ],
+        }),
+        step({ id: "e", displayNo: 4, type: "end", ownerId: fin.id }),
+      ],
+      { laneOrder: [fin.id] },
+    );
+    return { proc, parties: [fin] };
+  }
+
+  it("leaves the decision's bottom, runs under the row and enters the previous step's bottom", async () => {
+    const { proc, parties } = loopFixture();
+    const graph = buildLayoutGraph(proc, parties, "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const q = shape(graph, r, "q");
+    const rv = shape(graph, r, "r");
+    const no = r.edges.find((e) => e.id === "q->r")!;
+    expect(no.points).toHaveLength(4);
+    const [p0, p1, p2, p3] = no.points;
+    expect(p0.x).toBeCloseTo(q.cx);
+    expect(p0.y).toBeCloseTo(q.bottom);
+    expect(p1.x).toBeCloseTo(q.cx);
+    expect(p2.y).toBe(p1.y);
+    expect(p1.y).toBeGreaterThan(q.bottom);
+    expect(p3.x).toBeCloseTo(rv.cx);
+    expect(p3.y).toBeCloseTo(rv.bottom);
+    // Stays inside the lane; the band grows no extra rail below it.
+    const lane = r.lanes[0];
+    expect(p1.y).toBeLessThan(lane.y + lane.height);
+    expect(r.height).toBeLessThanOrEqual(lane.y + lane.height + 8);
+    // The "No" pill sits on the return run, just left of the corner under the diamond.
+    expect(no.labelAt!.y).toBe(p1.y);
+    expect(no.labelAt!.x).toBeLessThan(q.cx);
+    expect(no.labelAt!.x).toBeGreaterThan(rv.cx);
+    // The decision's name moves above the diamond, out of the loop's way.
+    expect(r.nodes.find((n) => n.id === "q")!.labelSide).toBe("above");
+    // The forward "Yes" still leaves the front of the diamond.
+    const yes = r.edges.find((e) => e.id === "q->e")!;
+    expect(yes.points[0].x).toBeCloseTo(q.right);
+  });
+
+  it("loops the same way in vertical orientation, along the lane axis", async () => {
+    const { proc, parties } = loopFixture();
+    const graph = buildLayoutGraph(proc, parties, "simple");
+    const r = await layoutGraph(graph, "vertical", elk);
+    const no = r.edges.find((e) => e.id === "q->r")!;
+    expect(no.points).toHaveLength(4);
+    const qn = r.nodes.find((n) => n.id === "q")!;
+    const rn = r.nodes.find((n) => n.id === "r")!;
+    const [p0, p1, , p3] = no.points;
+    // Leaves the diamond's right side, runs back up beside the column, enters the task's right side.
+    expect(p0.x).toBeGreaterThan(qn.x + qn.width / 2);
+    expect(p1.x).toBeGreaterThan(p0.x);
+    expect(p3.y).toBeLessThan(qn.y);
+    expect(p3.x).toBeGreaterThan(rn.x + rn.width / 2);
+    expect(r.nodes.find((n) => n.id === "q")!.labelSide).toBe("left");
+  });
+
+  it("still routes around the outside of the band when every loop is blocked", async () => {
+    const sales = party("Sales", 0);
+    const ops = party("Ops", 1);
+    const fin = party("Finance", 2);
+    // b (Sales, layer 1) <- c (Finance, layer 4). Ops and Finance steps fill both
+    // columns in every lane between the two, so no loop can get through.
+    const proc = process(
+      [
+        step({
+          id: "a",
+          displayNo: 1,
+          type: "start",
+          ownerId: sales.id,
+          next: [{ targetId: "b" }, { targetId: "o1" }, { targetId: "f1" }],
+        }),
+        step({ id: "b", displayNo: 2, ownerId: sales.id, next: [{ targetId: "o2" }] }),
+        step({ id: "o1", displayNo: 3, ownerId: ops.id, next: [{ targetId: "o2" }] }),
+        step({ id: "o2", displayNo: 4, ownerId: ops.id, next: [{ targetId: "o3" }] }),
+        step({
+          id: "o3",
+          displayNo: 5,
+          ownerId: ops.id,
+          next: [{ targetId: "c" }, { targetId: "s3" }, { targetId: "o4" }],
+        }),
+        step({ id: "s3", displayNo: 6, ownerId: sales.id, next: [{ targetId: "e" }] }),
+        step({ id: "o4", displayNo: 12, ownerId: ops.id, next: [{ targetId: "e" }] }),
+        step({ id: "f1", displayNo: 7, ownerId: fin.id, next: [{ targetId: "f2" }] }),
+        step({ id: "f2", displayNo: 8, ownerId: fin.id, next: [{ targetId: "f3" }] }),
+        step({ id: "f3", displayNo: 9, ownerId: fin.id, next: [{ targetId: "e" }] }),
+        step({
+          id: "c",
+          displayNo: 10,
+          type: "decision",
+          ownerId: fin.id,
+          next: [
+            { targetId: "e", label: "Done" },
+            { targetId: "b", label: "Again" },
+          ],
+        }),
+        step({ id: "e", displayNo: 11, type: "end", ownerId: fin.id }),
+      ],
+      { laneOrder: [sales.id, ops.id, fin.id] },
+    );
+    const graph = buildLayoutGraph(proc, [sales, ops, fin], "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
+    const back = r.edges.find((e) => e.id === "c->b")!;
+    expect(Math.max(...back.points.map((p) => p.y))).toBeGreaterThan(bandBottom);
+    expect(r.height).toBeGreaterThan(bandBottom);
   });
 });

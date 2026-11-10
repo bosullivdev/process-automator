@@ -120,7 +120,11 @@ so it cannot produce swim lanes on its own. Lanes are therefore applied in a
 deterministic post-pass in `src/graph/layout.ts`: nodes keep their ELK layer
 and in-layer order, and are stacked into lane bands in `laneOrder`. Edges are
 routed orthogonally through node-free channels between layers and gutters
-between rows; back-edges (cycles) run around the outside of the lane band.
+between rows. A back-edge (a feedback loop such as a "No" outcome returning
+to an earlier step) leaves the bottom or top of its source, runs along the
+nearest node-free gutter and enters the bottom or top of its target, so it
+reads as repeating that step; when no such loop is clear of every step and
+name, the edge runs around the outside of the lane band instead.
 
 ## Fonts
 

@@ -14,8 +14,10 @@ import type {
  * Layout works in (f, l) space: f runs along the flow, l across the lanes.
  * ELK layered provides layer assignment and crossing-minimised order; lanes
  * are applied in a deterministic post-pass; edges are routed orthogonally
- * through node-free channels (between layers) and gutters (between rows), and
- * back-edges go around the outside of the lane band.
+ * through node-free channels (between layers) and gutters (between rows).
+ * Back-edges loop under (or over) the row when the way is clear, leaving the
+ * source's bottom and entering the target's bottom; otherwise they go around
+ * the outside of the lane band.
  */
 
 const HEADER = 36; // lane header strip along the flow-axis start
@@ -207,7 +209,7 @@ export async function layoutGraph(
     return true;
   };
 
-  type PlanKind = "straight" | "targetLine" | "sourceLine" | "gutter" | "back";
+  type PlanKind = "straight" | "targetLine" | "sourceLine" | "gutter" | "loop" | "back";
   type Exit = "front" | "down" | "up";
   interface EdgePlan {
     e: (typeof graph.edges)[number];
@@ -216,19 +218,35 @@ export async function layoutGraph(
     sc: number;
     tc: number;
     kind: PlanKind;
-    rail: number; // gutter or back rail l-coordinate (gutter/back only)
+    rail: number; // gutter or back rail l-coordinate (gutter/loop/back only)
     needA: boolean; // channel after the source
     needB: boolean; // channel before the target
     exit: Exit; // which side of the source shape the edge leaves from
+    entry: Exit; // which side of the target shape the edge enters (loop only)
   }
+
+  /**
+   * Space a node's box reserves beyond its shape on one side of the lane axis
+   * (its name, when drawn outside the shape). An edge may not cross it.
+   */
+  const boxBeyond = (n: FLNode, side: "up" | "down") =>
+    side === "down" ? n.l1 - (n.l0 + n.aL + n.aLHalf) : n.aL - n.aLHalf;
+  const symmetricOf = (id: string) => graph.nodes.find((n) => n.id === id)?.text.symmetric ?? false;
+  /** A side can carry an edge when nothing is drawn there, or the name can move to the other side. */
+  const sideFree = (n: FLNode, side: "up" | "down") => boxBeyond(n, side) <= 6 || symmetricOf(n.id);
 
   /*
    * Forward edges prefer, in order: a straight line; a run along the target's
    * row (one bend pair in the channel after the source); a run along the
    * source's row (bend pair in the channel before the target); a gutter route
    * through the nearest node-free gutter. Each run is checked against every
-   * node, so edges never pass through a step. Back-edges go around the
-   * outside of the lane band.
+   * node, so edges never pass through a step.
+   *
+   * Back-edges (feedback) prefer a loop: out of the source's bottom or top,
+   * along the nearest node-free gutter back to the target's column, and into
+   * the target's bottom or top, so a "No" reads as repeating the earlier step.
+   * The loop must not touch any node or any name drawn outside a shape. When
+   * no gutter gives a clear loop, the edge goes around the outside of the band.
    */
   let backIndex = 0;
   const plans: EdgePlan[] = [];
@@ -252,6 +270,7 @@ export async function layoutGraph(
       needA: true,
       needB: true,
       exit: "front",
+      entry: "front",
     };
     if (t.layer > s.layer) {
       const colEndS = colStart(s.layer) + NODE_F;
@@ -276,8 +295,34 @@ export async function layoutGraph(
         );
       }
     } else {
-      plan.rail = bandEnd + BACK_STEP + backIndex * BACK_STEP;
-      backIndex++;
+      const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
+      const tfc = t.f0 + (t.aF0 + t.aF1) / 2;
+      const rails = [...new Set([s.rowGutter, t.rowGutter, s.rowGutterUp, t.rowGutterUp])]
+        .map((rail) => ({ rail, travel: Math.abs(sc - rail) + Math.abs(rail - tc) }))
+        // Nearest loop first; below the row before above it when equal.
+        .sort((a, b) => a.travel - b.travel || (a.rail > sc ? -1 : 1));
+      for (const { rail } of rails) {
+        const exit: Exit = rail > sc ? "down" : "up";
+        const entry: Exit = rail > tc ? "down" : "up";
+        if (Math.abs(rail - sc) <= s.aLHalf + 4 || Math.abs(rail - tc) <= t.aLHalf + 4) continue;
+        if (!sideFree(s, exit) || !sideFree(t, entry)) continue;
+        const sEdge = sc + (exit === "down" ? s.aLHalf : -s.aLHalf);
+        const tEdge = tc + (entry === "down" ? t.aLHalf : -t.aLHalf);
+        if (!clearColumn(sfc, sEdge, rail, new Set([s.id]))) continue;
+        if (!clearColumn(tfc, tEdge, rail, new Set([t.id]))) continue;
+        if (!clearRun(sfc, tfc, rail, skip)) continue;
+        plan.kind = "loop";
+        plan.rail = rail;
+        plan.exit = exit;
+        plan.entry = entry;
+        plan.needA = false;
+        plan.needB = false;
+        break;
+      }
+      if (plan.kind === "back") {
+        plan.rail = bandEnd + BACK_STEP + backIndex * BACK_STEP;
+        backIndex++;
+      }
     }
     plans.push(plan);
   }
@@ -298,6 +343,14 @@ export async function layoutGraph(
   for (const [sourceId, group] of bySourceAll) {
     const s = nodes.get(sourceId)!;
     labelSide.set(sourceId, defaultSide);
+    const loop = group.find((p) => p.kind === "loop");
+    if (loop) {
+      // The loop already uses one side of the shape; the name moves to the other.
+      if (symmetricOf(sourceId)) {
+        labelSide.set(sourceId, loop.exit === "down" ? flippedSide : defaultSide);
+      }
+      continue;
+    }
     if (group.length < 2) continue;
     const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
     const candidates = group
@@ -373,8 +426,11 @@ export async function layoutGraph(
     const horizontal = group.filter(
       (p) => p.exit === "front" && (p.kind === "straight" || p.kind === "sourceLine"),
     );
-    const side = group.filter((p) => p.exit !== "front");
-    const vertical = group.filter((p) => !horizontal.includes(p) && !side.includes(p));
+    const loops = group.filter((p) => p.kind === "loop");
+    const side = group.filter((p) => p.exit !== "front" && p.kind !== "loop");
+    const vertical = group.filter(
+      (p) => !horizontal.includes(p) && !side.includes(p) && !loops.includes(p),
+    );
     let along = 8;
     for (const p of horizontal) {
       const w = labelWidth(p.e.label!);
@@ -387,6 +443,18 @@ export async function layoutGraph(
       const ext = orientation === "horizontal" ? LABEL_H : w;
       const off = p.s.aLHalf + 8 + ext / 2;
       labelFL.set(p.e.id, { f: sfc, l: p.sc + (p.exit === "down" ? off : -off) });
+    }
+    // A loop's pill sits on the return run just past the corner under the
+    // source, so the outcome is read beside the decision it leaves.
+    for (const p of loops) {
+      const w = labelWidth(p.e.label!);
+      const sfc = p.s.f0 + (p.s.aF0 + p.s.aF1) / 2;
+      const tfc = p.t.f0 + (p.t.aF0 + p.t.aF1) / 2;
+      const extAlongF = orientation === "horizontal" ? w : LABEL_H;
+      const run = Math.abs(tfc - sfc);
+      const back = Math.sign(tfc - sfc) || -1;
+      const off = run < extAlongF + 24 ? run / 2 : extAlongF / 2 + 12;
+      labelFL.set(p.e.id, { f: sfc + back * off, l: p.rail });
     }
     // Channel-side pills stack away from the source line. The step is the pill's
     // extent along the lane axis: its height when lanes stack vertically, its
@@ -418,7 +486,11 @@ export async function layoutGraph(
     if (p.exit !== "front") {
       const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
       const edgeL = sc + (p.exit === "down" ? s.aLHalf : -s.aLHalf);
-      if (p.kind === "targetLine") {
+      if (p.kind === "loop") {
+        const tfc = t.f0 + (t.aF0 + t.aF1) / 2;
+        const tEdge = tc + (p.entry === "down" ? t.aLHalf : -t.aLHalf);
+        pts.push(toXY(sfc, edgeL), toXY(sfc, p.rail), toXY(tfc, p.rail), toXY(tfc, tEdge));
+      } else if (p.kind === "targetLine") {
         pts.push(toXY(sfc, edgeL), toXY(sfc, tc), toXY(tf0, tc));
       } else {
         pts.push(
