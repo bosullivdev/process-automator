@@ -67,10 +67,7 @@ a static site.
   it and use the arrow keys) to reorder lanes. Orientation, shape mode
   (simple / BPMN) and detail level are toggles in the header. At full detail a
   task shows its technology as a pill and its contributors as initial badges
-  in party colours; "Minimal" hides both for a cleaner picture. The box width
-  select (narrow, normal, wide, extra wide) widens every task box so long step
-  names wrap to fewer lines; names beside start, end and decision shapes widen
-  with it. Like orientation, it is a view setting and is not part of the data.
+  in party colours; "Minimal" hides both for a cleaner picture.
 - **Validation**: a drawer under the table lists errors and warnings for the
   active process; click one to jump to the step. Broken links offer a
   one-click "Remove link".

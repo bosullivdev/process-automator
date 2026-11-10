@@ -84,12 +84,4 @@ describe("annotations default", () => {
     const out = migrate({ ...ws, view: legacyView });
     expect(out.view.annotations).toBe("full");
   });
-
-  it("loads a file saved before the box width setting existed", () => {
-    const ws = workspace([], []);
-    const { boxWidth: _dropped, ...legacyView } = ws.view;
-    void _dropped;
-    const out = migrate({ ...ws, view: legacyView });
-    expect(out.view.boxWidth).toBe("normal");
-  });
 });

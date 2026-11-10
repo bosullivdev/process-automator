@@ -63,9 +63,6 @@ export interface NextLink {
   teamIds?: string[]; // team IDs this link applies to; empty or absent = every team
 }
 
-/** Width of task boxes on the map; names wrap to fit. Outside names scale with it. */
-export type BoxWidth = "narrow" | "normal" | "wide" | "extra";
-
 export interface ViewSettings {
   orientation: "horizontal" | "vertical";
   shapeMode: "simple" | "bpmn";
@@ -74,8 +71,6 @@ export interface ViewSettings {
   activeProcessId: string | null;
   /** "full" shows technology and contributors on the map; "minimal" hides them. */
   annotations: "full" | "minimal";
-  /** How wide task boxes are drawn, so long names need fewer lines. */
-  boxWidth: BoxWidth;
   /** The team whose variant is emphasised, or null for the whole process. */
   highlightTeamId: string | null;
   /** "highlight" fades everything outside the team; "isolate" shows the team's variant alone. */
