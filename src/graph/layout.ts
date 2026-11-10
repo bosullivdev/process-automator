@@ -422,30 +422,63 @@ export async function layoutGraph(
   /*
    * Channel positions. Each gap holds the verticals of edges leaving the layer
    * before it ("a", vertical then horizontal on to the target) and of edges
-   * arriving in the layer after it ("b", horizontal then vertical). Verticals
-   * nest by how far they travel across the lanes: an "a" vertical that spans
-   * more rows sits nearer the source column, a "b" vertical that spans more
-   * rows sits nearer the target column, so a long vertical never cuts across
-   * the horizontal run of a shorter edge turning off inside its span.
+   * arriving in the layer after it ("b", horizontal then vertical). Every such
+   * vertical is the middle of a Z: a horizontal arrives from the source side
+   * at row "inL", the vertical runs to row "outL", and a horizontal leaves
+   * towards the target side. Two Zs in one gap cross when the outer one's
+   * arriving run passes through the inner one's span, or the inner one's
+   * leaving run passes through the outer one's span; verticals are ordered
+   * to avoid that. Equal rows merge rather than cross. Ties fall back to
+   * span: an "a" vertical that spans more rows sits nearer the source column,
+   * a "b" vertical that spans more rows nearer the target column.
    */
-  type Seg = { edgeId: string; gap: number; span: number; which: "a" | "b" };
+  type Seg = {
+    edgeId: string;
+    gap: number;
+    span: number;
+    which: "a" | "b";
+    inL: number;
+    outL: number;
+  };
   const segs: Seg[] = [];
   for (const p of plans) {
     if (p.needA) {
-      const span = Math.abs((p.kind === "gutter" ? p.rail : p.tc) - p.sc);
-      segs.push({ edgeId: p.e.id, gap: p.s.layer, span, which: "a" });
+      const outL = p.kind === "gutter" ? p.rail : p.tc;
+      segs.push({
+        edgeId: p.e.id,
+        gap: p.s.layer,
+        span: Math.abs(outL - p.sc),
+        which: "a",
+        inL: p.sc,
+        outL,
+      });
     }
     if (p.needB) {
-      const span = Math.abs(p.tc - (p.kind === "gutter" ? p.rail : p.sc));
-      segs.push({ edgeId: p.e.id, gap: p.t.layer - 1, span, which: "b" });
+      const inL = p.kind === "gutter" ? p.rail : p.sc;
+      segs.push({
+        edgeId: p.e.id,
+        gap: p.t.layer - 1,
+        span: Math.abs(p.tc - inL),
+        which: "b",
+        inL,
+        outL: p.tc,
+      });
     }
   }
+  const within = (l: number, a: number, b: number) =>
+    l > Math.min(a, b) + 0.5 && l < Math.max(a, b) - 0.5;
+  /** Crossings when `inner` sits nearer the source column than `outer`. */
+  const crossings = (inner: Seg, outer: Seg) =>
+    (within(outer.inL, inner.inL, inner.outL) ? 1 : 0) +
+    (within(inner.outL, outer.inL, outer.outL) ? 1 : 0);
   const channelF = new Map<string, number>();
   const byGap = new Map<number, Seg[]>();
   for (const sg of segs) byGap.set(sg.gap, [...(byGap.get(sg.gap) ?? []), sg]);
   for (const [g, list] of byGap) {
     list.sort((a, b) => {
       if (a.which !== b.which) return a.which === "a" ? -1 : 1;
+      const byCross = crossings(a, b) - crossings(b, a);
+      if (byCross) return byCross;
       const bySpan = a.which === "a" ? b.span - a.span : a.span - b.span;
       return bySpan || a.edgeId.localeCompare(b.edgeId);
     });

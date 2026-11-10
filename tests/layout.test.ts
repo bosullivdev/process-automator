@@ -213,6 +213,46 @@ describe("decision side exits", () => {
     }
   });
 
+  it("nests a fan-in from two lanes so the nearer arrow does not cross the farther one", async () => {
+    const top = party("Department head", 0);
+    const bottom = party("Executive board", 1);
+    const third = party("Faculty finance", 2);
+    // top: start -> delegate(a2); bottom: start -> delegate(b2); both -> populate (third lane)
+    const proc = process(
+      [
+        step({
+          id: "a1",
+          displayNo: 1,
+          type: "start",
+          ownerId: top.id,
+          next: [{ targetId: "a2" }],
+        }),
+        step({ id: "a2", displayNo: 2, ownerId: top.id, next: [{ targetId: "c" }] }),
+        step({
+          id: "b1",
+          displayNo: 3,
+          type: "start",
+          ownerId: bottom.id,
+          next: [{ targetId: "b2" }],
+        }),
+        step({ id: "b2", displayNo: 4, ownerId: bottom.id, next: [{ targetId: "c" }] }),
+        step({ id: "c", displayNo: 5, ownerId: third.id, next: [{ targetId: "e" }] }),
+        step({ id: "e", displayNo: 6, type: "end", ownerId: third.id }),
+      ],
+      { laneOrder: [top.id, bottom.id, third.id] },
+    );
+    for (const orientation of ["horizontal", "vertical"] as const) {
+      const r = await layoutGraph(
+        buildLayoutGraph(proc, [top, bottom, third], "simple"),
+        orientation,
+        elk,
+      );
+      const far = r.edges.find((e) => e.id === "a2->c")!;
+      const near = r.edges.find((e) => e.id === "b2->c")!;
+      expect(crossings(far.points, near.points), orientation).toBe(0);
+    }
+  });
+
   it("nests channel verticals so a fan-out downwards does not cross itself", async () => {
     const ops = party("Ops", 0);
     const proc = process(
