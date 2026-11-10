@@ -79,5 +79,12 @@ test("map renders lanes, syncs selection and flips orientation", async ({ page }
   expect(salesIdx).toBe(0);
   await expect(map.locator("[data-lane-id]").nth(0).locator("text")).toHaveText("Ops");
 
+  // move buttons on the lane header put Sales back first
+  await map.getByRole("button", { name: /Lane Sales/ }).hover();
+  await map.getByRole("button", { name: "Move lane Sales left" }).click();
+  await page.waitForTimeout(400);
+  await expect(map.locator("[data-lane-id]").nth(0).locator("text")).toHaveText("Sales");
+  await expect(map.getByRole("button", { name: "Move lane Sales left" })).toHaveCount(0);
+
   expect(errors).toEqual([]);
 });

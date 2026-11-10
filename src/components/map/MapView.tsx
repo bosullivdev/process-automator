@@ -299,6 +299,63 @@ export function MapView({
             const hx = lane.header.x + lane.header.width / 2;
             const hy = lane.header.y + lane.header.height / 2;
             const isDragging = drag?.laneId === lane.id;
+            // Move buttons at the far end of the header band: the party lanes only,
+            // "back" hidden on the first lane and "forward" on the last.
+            const partyLanes = layout.lanes.filter((l) => l.id !== UNASSIGNED_LANE);
+            const pi = partyLanes.findIndex((l) => l.id === lane.id);
+            const canBack = pi > 0;
+            const canFwd = pi >= 0 && pi < partyLanes.length - 1;
+            const name = laneName(lane.id);
+            const endX = lane.header.x + lane.header.width;
+            const endY = lane.header.y + lane.header.height;
+            const moveButton = (delta: -1 | 1, cx: number, cy: number) => {
+              const label = horizontal
+                ? delta < 0
+                  ? `Move lane ${name} up`
+                  : `Move lane ${name} down`
+                : delta < 0
+                  ? `Move lane ${name} left`
+                  : `Move lane ${name} right`;
+              // Chevron pointing along the lane axis in the move direction.
+              const d = horizontal
+                ? delta < 0
+                  ? `M${cx - 4},${cy + 2} L${cx},${cy - 2} L${cx + 4},${cy + 2}`
+                  : `M${cx - 4},${cy - 2} L${cx},${cy + 2} L${cx + 4},${cy - 2}`
+                : delta < 0
+                  ? `M${cx + 2},${cy - 4} L${cx - 2},${cy} L${cx + 2},${cy + 4}`
+                  : `M${cx - 2},${cy - 4} L${cx + 2},${cy} L${cx - 2},${cy + 4}`;
+              return (
+                <g
+                  role="button"
+                  tabIndex={0}
+                  aria-label={label}
+                  data-lane-move={delta < 0 ? "back" : "forward"}
+                  className="cursor-pointer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                  style={{ outline: "none" }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveLaneByKeyboard(lane.id, delta);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      moveLaneByKeyboard(lane.id, delta);
+                    }
+                  }}
+                >
+                  <rect x={cx - 9} y={cy - 9} width={18} height={18} rx={4} fill="transparent" />
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="var(--text)"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  />
+                </g>
+              );
+            };
             return (
               <g key={lane.id} data-lane-id={lane.id} opacity={isDragging ? 0.6 : 1}>
                 <rect
@@ -328,7 +385,7 @@ export function MapView({
                   />
                 )}
                 <g
-                  className={lane.id === UNASSIGNED_LANE ? "" : "cursor-grab"}
+                  className={lane.id === UNASSIGNED_LANE ? "group" : "group cursor-grab"}
                   onPointerDown={(e) =>
                     lane.id !== UNASSIGNED_LANE && onHeaderPointerDown(e, lane.id)
                   }
@@ -380,6 +437,27 @@ export function MapView({
                       </tspan>
                     ))}
                   </text>
+                  {(canBack || canFwd) && (
+                    <rect
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                      x={horizontal ? endX + 4 : endX - 44}
+                      y={horizontal ? endY - 44 : endY + 4}
+                      width={horizontal ? 20 : 40}
+                      height={horizontal ? 40 : 20}
+                      rx={6}
+                      fill="var(--surface)"
+                      stroke="var(--border)"
+                      style={{ pointerEvents: "none" }}
+                    />
+                  )}
+                  {canBack &&
+                    (horizontal
+                      ? moveButton(-1, endX + 14, endY - 33)
+                      : moveButton(-1, endX - 33, endY + 14))}
+                  {canFwd &&
+                    (horizontal
+                      ? moveButton(1, endX + 14, endY - 13)
+                      : moveButton(1, endX - 13, endY + 14))}
                 </g>
                 {drag && dropIndex === i && (
                   <line

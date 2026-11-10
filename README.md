@@ -63,8 +63,9 @@ a static site.
   "Create new step" entry. Decisions get a label and a default toggle per
   outcome, and every link gets a team scope once teams exist.
 - **Map (right)**: pan by dragging, zoom with Ctrl/Cmd + wheel or the buttons.
-  Click a node to select its row and vice versa. Drag a lane header (or focus
-  it and use the arrow keys) to reorder lanes. Orientation, shape mode
+  Click a node to select its row and vice versa. To reorder lanes, hover a
+  lane header and use the move buttons at its end, drag the header, or focus
+  it and use the arrow keys. Orientation, shape mode
   (simple / BPMN) and detail level are toggles in the header. At full detail a
   task shows its technology as a pill and its contributors as initial badges
   in party colours; "Minimal" hides both for a cleaner picture. The lane
