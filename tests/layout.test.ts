@@ -457,12 +457,92 @@ describe("feedback loops", () => {
     expect(r.nodes.find((n) => n.id === "q")!.labelSide).toBe("left");
   });
 
-  it("still routes around the outside of the band when every loop is blocked", async () => {
+  /** True when some segment of the polyline passes through the rectangle's interior. */
+  const passesThrough = (
+    pts: { x: number; y: number }[],
+    r: { x0: number; x1: number; y0: number; y1: number },
+  ) =>
+    pts.some((b, i) => {
+      if (i === 0) return false;
+      const a = pts[i - 1];
+      return (
+        Math.max(a.x, b.x) > r.x0 + 0.5 &&
+        Math.min(a.x, b.x) < r.x1 - 0.5 &&
+        Math.max(a.y, b.y) > r.y0 + 0.5 &&
+        Math.min(a.y, b.y) < r.y1 - 0.5
+      );
+    });
+
+  it("never runs a loop through a decision's name, and uses the front when both sides are taken", async () => {
+    const fin = party("Finance", 0);
+    const dept = party("Department head", 1);
+    // issue -> q; q: Yes -> review, No -> develop; review -> q and develop -> q loop back.
+    // "No" wants the diamond's bottom, so the first loop comes in over the top;
+    // the name stays below and the second loop, with no side left, comes in at
+    // the front.
+    const proc = process(
+      [
+        step({
+          id: "issue",
+          displayNo: 1,
+          type: "start",
+          ownerId: fin.id,
+          next: [{ targetId: "q" }],
+        }),
+        step({
+          id: "q",
+          displayNo: 2,
+          type: "decision",
+          name: "Are the requirements understood?",
+          ownerId: dept.id,
+          next: [
+            { targetId: "review", label: "Yes" },
+            { targetId: "develop", label: "No" },
+          ],
+        }),
+        step({
+          id: "review",
+          displayNo: 3,
+          ownerId: dept.id,
+          next: [{ targetId: "q" }, { targetId: "e" }],
+        }),
+        step({ id: "develop", displayNo: 4, ownerId: dept.id, next: [{ targetId: "q" }] }),
+        step({ id: "e", displayNo: 5, type: "end", ownerId: dept.id }),
+      ],
+      { laneOrder: [fin.id, dept.id] },
+    );
+    const graph = buildLayoutGraph(proc, [fin, dept], "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const qn = r.nodes.find((n) => n.id === "q")!;
+    const q = shape(graph, r, "q");
+    const first = r.edges.find((e) => e.id === "review->q")!;
+    const second = r.edges.find((e) => e.id === "develop->q")!;
+    expect(r.nodes.find((n) => n.id === "review")!.layer).toBeGreaterThan(qn.layer);
+    // First loop: into the diamond's top, leaving the bottom to "No"; the name stays below.
+    const l1 = first.points[first.points.length - 1];
+    expect(l1.x).toBeCloseTo(q.cx);
+    expect(l1.y).toBeCloseTo(q.top);
+    expect(qn.labelSide).toBe("below");
+    // Second loop: round through the channel before the diamond and in at its left point.
+    const l2 = second.points[second.points.length - 1];
+    expect(l2.x).toBeCloseTo(q.left);
+    expect(l2.y).toBeCloseTo(q.cy);
+    expect(second.points.length).toBeGreaterThanOrEqual(5);
+    // Neither loop passes through the name block below the diamond.
+    const name = { x0: qn.x, x1: qn.x + qn.width, y0: q.bottom, y1: qn.y + qn.height };
+    expect(passesThrough(first.points, name)).toBe(false);
+    expect(passesThrough(second.points, name)).toBe(false);
+    // Both stay inside the band.
+    const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
+    for (const p of [...first.points, ...second.points]) expect(p.y).toBeLessThan(bandBottom);
+  });
+
+  it("loops through the channel into the front of a step several lanes away", async () => {
     const sales = party("Sales", 0);
     const ops = party("Ops", 1);
     const fin = party("Finance", 2);
-    // b (Sales, layer 1) <- c (Finance, layer 4). Ops and Finance steps fill both
-    // columns in every lane between the two, so no loop can get through.
+    // b (Sales, layer 1) <- c (Finance, layer 4); Ops and Finance steps fill both
+    // columns in every lane between, so no side entry is clear.
     const proc = process(
       [
         step({
@@ -502,9 +582,59 @@ describe("feedback loops", () => {
     );
     const graph = buildLayoutGraph(proc, [sales, ops, fin], "simple");
     const r = await layoutGraph(graph, "horizontal", elk);
-    const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
+    const b = shape(graph, r, "b");
     const back = r.edges.find((e) => e.id === "c->b")!;
-    expect(Math.max(...back.points.map((p) => p.y))).toBeGreaterThan(bandBottom);
+    const last = back.points[back.points.length - 1];
+    expect(last.x).toBeCloseTo(b.left);
+    expect(last.y).toBeCloseTo(b.cy);
+    const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
+    expect(Math.max(...back.points.map((p) => p.y))).toBeLessThan(bandBottom);
+    // The vertical runs in the node-free gap before b's column, so it touches no step.
+    for (const n of r.nodes) {
+      if (n.id === "b" || n.id === "c") continue;
+      const box = { x0: n.x, x1: n.x + n.width, y0: n.y, y1: n.y + n.height };
+      expect(passesThrough(back.points, box), n.id).toBe(false);
+    }
+  });
+
+  it("still routes around the outside of the band when the source has no side left", async () => {
+    const fin = party("Finance", 0);
+    // s, b and d all lead to c, which (with a technology pill below) loops back
+    // to both b and d. The first loop takes c's bottom and the pill moves above;
+    // the second loop finds neither side free and goes round the outside.
+    const proc = process(
+      [
+        step({
+          id: "s",
+          displayNo: 1,
+          type: "start",
+          ownerId: fin.id,
+          next: [{ targetId: "b" }, { targetId: "c" }],
+        }),
+        step({
+          id: "b",
+          displayNo: 2,
+          ownerId: fin.id,
+          next: [{ targetId: "d" }, { targetId: "c" }],
+        }),
+        step({ id: "d", displayNo: 3, ownerId: fin.id, next: [{ targetId: "c" }] }),
+        step({
+          id: "c",
+          displayNo: 4,
+          ownerId: fin.id,
+          technology: "Axiom",
+          next: [{ targetId: "b" }, { targetId: "d" }],
+        }),
+      ],
+      { laneOrder: [fin.id] },
+    );
+    const graph = buildLayoutGraph(proc, [fin], "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
+    const toB = r.edges.find((e) => e.id === "c->b")!;
+    const toD = r.edges.find((e) => e.id === "c->d")!;
+    expect(Math.max(...toB.points.map((p) => p.y))).toBeLessThan(bandBottom);
+    expect(Math.max(...toD.points.map((p) => p.y))).toBeGreaterThan(bandBottom);
     expect(r.height).toBeGreaterThan(bandBottom);
   });
 });

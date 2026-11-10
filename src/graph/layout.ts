@@ -275,8 +275,33 @@ export async function layoutGraph(
   const boxBeyond = (n: FLNode, side: "up" | "down") =>
     side === "down" ? n.l1 - (n.l0 + n.aL + n.aLHalf) : n.aL - n.aLHalf;
   const symmetricOf = (id: string) => graph.nodes.find((n) => n.id === id)?.text.symmetric ?? false;
-  /** A side can carry an edge when nothing is drawn there, or the name can move to the other side. */
-  const sideFree = (n: FLNode, side: "up" | "down") => boxBeyond(n, side) <= 6 || symmetricOf(n.id);
+  const fc = (n: FLNode) => n.f0 + (n.aF0 + n.aF1) / 2;
+
+  /*
+   * Each node's two sides along the lane axis ("down" is the default name
+   * side) can carry at most one edge each, and never an edge through the
+   * name. A node whose box reserved room on both sides (symmetric) may move
+   * its name across to free a side. Sides are claimed in order of importance:
+   * feedback loops first, then the farthest outcome of a fan-out, then
+   * back-edges heading for the outside rail.
+   */
+  type Side = "up" | "down";
+  const other = (side: Side): Side => (side === "down" ? "up" : "down");
+  const sideState = new Map<string, { name: Side | null; used: Set<Side> }>();
+  for (const n of nodes.values()) {
+    sideState.set(n.id, { name: boxBeyond(n, "down") > 6 ? "down" : null, used: new Set() });
+  }
+  const canClaim = (n: FLNode, side: Side): boolean => {
+    const st = sideState.get(n.id)!;
+    if (st.used.has(side)) return false;
+    if (st.name === side) return symmetricOf(n.id) && !st.used.has(other(side));
+    return true;
+  };
+  const claim = (n: FLNode, side: Side): void => {
+    const st = sideState.get(n.id)!;
+    if (st.name === side) st.name = other(side);
+    st.used.add(side);
+  };
 
   /*
    * Forward edges prefer, in order: a straight line; a run along the target's
@@ -285,11 +310,7 @@ export async function layoutGraph(
    * through the nearest node-free gutter. Each run is checked against every
    * node, so edges never pass through a step.
    *
-   * Back-edges (feedback) prefer a loop: out of the source's bottom or top,
-   * along the nearest node-free gutter back to the target's column, and into
-   * the target's bottom or top, so a "No" reads as repeating the earlier step.
-   * The loop must not touch any node or any name drawn outside a shape. When
-   * no gutter gives a clear loop, the edge goes around the outside of the band.
+   * Back-edges are planned afterwards, once every forward plan is known.
    */
   let backIndex = 0;
   const plans: EdgePlan[] = [];
@@ -337,37 +358,108 @@ export async function layoutGraph(
             : best,
         );
       }
-    } else {
-      const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
-      const tfc = t.f0 + (t.aF0 + t.aF1) / 2;
-      const rails = [...new Set([s.rowGutter, t.rowGutter, s.rowGutterUp, t.rowGutterUp])]
-        .map((rail) => ({ rail, travel: Math.abs(sc - rail) + Math.abs(rail - tc) }))
-        // Nearest loop first; below the row before above it when equal.
-        .sort((a, b) => a.travel - b.travel || (a.rail > sc ? -1 : 1));
-      for (const { rail } of rails) {
-        const exit: Exit = rail > sc ? "down" : "up";
-        const entry: Exit = rail > tc ? "down" : "up";
-        if (Math.abs(rail - sc) <= s.aLHalf + 4 || Math.abs(rail - tc) <= t.aLHalf + 4) continue;
-        if (!sideFree(s, exit) || !sideFree(t, entry)) continue;
-        const sEdge = sc + (exit === "down" ? s.aLHalf : -s.aLHalf);
-        const tEdge = tc + (entry === "down" ? t.aLHalf : -t.aLHalf);
-        if (!clearColumn(sfc, sEdge, rail, new Set([s.id]))) continue;
-        if (!clearColumn(tfc, tEdge, rail, new Set([t.id]))) continue;
-        if (!clearRun(sfc, tfc, rail, skip)) continue;
-        plan.kind = "loop";
-        plan.rail = rail;
-        plan.exit = exit;
-        plan.entry = entry;
-        plan.needA = false;
-        plan.needB = false;
-        break;
-      }
-      if (plan.kind === "back") {
-        plan.rail = bandEnd + BACK_STEP + backIndex * BACK_STEP;
-        backIndex++;
-      }
     }
     plans.push(plan);
+  }
+
+  /*
+   * Feedback loops. A back-edge prefers a loop: out of the source's bottom or
+   * top, along the nearest node-free gutter back towards the target, and in
+   * through the target's bottom or top, so a "No" reads as repeating the
+   * earlier step. When neither of the target's sides is free (its name is on
+   * one and another arrow uses the other), the loop instead turns in the
+   * channel before the target and enters its front, where arrows normally
+   * arrive. A loop never touches a node or a name. When no rail gives a clear
+   * loop, the edge goes around the outside of the band.
+   */
+  // The side each fan-out would like for its farthest outcome (see "Side
+  // exits" below). A loop avoids taking that side from either end, so the
+  // outcome keeps its side exit instead of turning in the channel across the
+  // loop's return run.
+  const wantedSide = new Map<string, Side>();
+  {
+    const bySource = new Map<string, EdgePlan[]>();
+    for (const p of plans) bySource.set(p.e.from, [...(bySource.get(p.e.from) ?? []), p]);
+    for (const [id, group] of bySource) {
+      if (group.length < 2) continue;
+      const n = nodes.get(id)!;
+      const far = group
+        .filter((p) => p.kind === "targetLine" || p.kind === "gutter")
+        .map((p) => ({ p, goal: p.kind === "targetLine" ? p.tc : p.rail }))
+        .filter(({ goal, p }) => Math.abs(goal - p.sc) > n.aLHalf + 4)
+        .sort(
+          (a, b) =>
+            Math.abs(b.goal - b.p.sc) - Math.abs(a.goal - a.p.sc) ||
+            a.p.e.id.localeCompare(b.p.e.id),
+        )[0];
+      if (far) wantedSide.set(id, far.goal > far.p.sc ? "down" : "up");
+    }
+  }
+
+  for (const plan of plans) {
+    if (plan.kind !== "back") continue;
+    const { s, t, sc, tc } = plan;
+    const sfc = fc(s);
+    const tfc = fc(t);
+    const skip = new Set([s.id, t.id]);
+    const rails = [...new Set([s.rowGutter, t.rowGutter, s.rowGutterUp, t.rowGutterUp])]
+      .map((rail) => ({ rail, travel: Math.abs(sc - rail) + Math.abs(rail - tc) }))
+      // Nearest loop first; below the row before above it when about equal, so
+      // a feedback loop reads as a return under the step wherever it can.
+      .sort((a, b) => {
+        const below = (r: number) => (r > sc ? 0 : 1);
+        return Math.abs(a.travel - b.travel) <= 16
+          ? below(a.rail) - below(b.rail) || a.travel - b.travel
+          : a.travel - b.travel;
+      })
+      .map(({ rail }) => rail);
+    // Side entries that take no wanted side first, then front entries, then
+    // the rest; within a rank, nearest rail first.
+    const attempts = [false, true]
+      .flatMap((front) => rails.map((rail, i) => ({ rail, front, i })))
+      .map((a) => {
+        const exit: Side = a.rail > sc ? "down" : "up";
+        const entry: Side = a.rail > tc ? "down" : "up";
+        const conflict =
+          wantedSide.get(s.id) === exit || (!a.front && wantedSide.get(t.id) === entry);
+        return { ...a, rank: (a.front ? 1 : 0) + (conflict ? 2 : 0) };
+      })
+      .sort((a, b) => a.rank - b.rank || a.i - b.i);
+    for (const { rail, front } of attempts) {
+      const exit: Side = rail > sc ? "down" : "up";
+      if (Math.abs(rail - sc) <= s.aLHalf + 4 || !canClaim(s, exit)) continue;
+      const sEdge = sc + (exit === "down" ? s.aLHalf : -s.aLHalf);
+      if (!clearColumn(sfc, sEdge, rail, new Set([s.id]))) continue;
+      if (front) {
+        const [g0, g1] = gapRange(t.layer - 1);
+        const fb = (g0 + g1) / 2;
+        if (!clearRun(sfc, fb, rail, skip)) continue;
+        if (!clearColumn(fb, rail, tc, skip)) continue;
+        if (!clearRun(fb, t.f0 + t.aF0, tc, skip)) continue;
+        claim(s, exit);
+        plan.entry = "front";
+        plan.needB = true;
+      } else {
+        const entry: Side = rail > tc ? "down" : "up";
+        if (Math.abs(rail - tc) <= t.aLHalf + 4 || !canClaim(t, entry)) continue;
+        const tEdge = tc + (entry === "down" ? t.aLHalf : -t.aLHalf);
+        if (!clearColumn(tfc, tEdge, rail, new Set([t.id]))) continue;
+        if (!clearRun(sfc, tfc, rail, skip)) continue;
+        claim(s, exit);
+        claim(t, entry);
+        plan.entry = entry;
+        plan.needB = false;
+      }
+      plan.kind = "loop";
+      plan.rail = rail;
+      plan.exit = exit;
+      plan.needA = false;
+      break;
+    }
+    if (plan.kind === "back") {
+      plan.rail = bandEnd + BACK_STEP + backIndex * BACK_STEP;
+      backIndex++;
+    }
   }
 
   /*
@@ -376,26 +468,14 @@ export async function layoutGraph(
    * its front, so outcomes are told apart by where they leave. The farthest
    * edge takes the innermost vertical so that it never crosses the horizontal
    * runs of the nearer edges, which turn in the channel beyond it. Only one
-   * side exit per node; its name then moves to the other side (labelSide).
+   * side exit per node, and a loop leaving the node already counts as it.
    */
-  const labelSide = new Map<string, LabelSide>();
-  const defaultSide: LabelSide = orientation === "horizontal" ? "below" : "right";
-  const flippedSide: LabelSide = orientation === "horizontal" ? "above" : "left";
   const bySourceAll = new Map<string, EdgePlan[]>();
   for (const p of plans) bySourceAll.set(p.e.from, [...(bySourceAll.get(p.e.from) ?? []), p]);
   for (const [sourceId, group] of bySourceAll) {
     const s = nodes.get(sourceId)!;
-    labelSide.set(sourceId, defaultSide);
-    const loop = group.find((p) => p.kind === "loop");
-    if (loop) {
-      // The loop already uses one side of the shape; the name moves to the other.
-      if (symmetricOf(sourceId)) {
-        labelSide.set(sourceId, loop.exit === "down" ? flippedSide : defaultSide);
-      }
-      continue;
-    }
-    if (group.length < 2) continue;
-    const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
+    if (group.length < 2 || group.some((p) => p.kind === "loop")) continue;
+    const sfc = fc(s);
     const candidates = group
       .filter((p) => p.kind === "targetLine" || p.kind === "gutter" || p.kind === "back")
       .map((p) => {
@@ -405,19 +485,24 @@ export async function layoutGraph(
       .filter(({ goal, p }) => Math.abs(goal - p.sc) > s.aLHalf + 4)
       .sort((a, b) => b.dist - a.dist || a.p.e.id.localeCompare(b.p.e.id));
     for (const { p, goal } of candidates) {
-      const down = goal > p.sc;
-      const edgeL = p.sc + (down ? s.aLHalf : -s.aLHalf);
+      const side: Side = goal > p.sc ? "down" : "up";
+      if (!canClaim(s, side)) continue;
+      const edgeL = p.sc + (side === "down" ? s.aLHalf : -s.aLHalf);
       const skip = new Set([s.id, p.t.id]);
       if (!clearColumn(sfc, edgeL, goal, skip)) continue;
       if (p.kind === "targetLine" && !clearRun(sfc, p.t.f0 + p.t.aF0, p.tc, skip)) continue;
-      p.exit = down ? "down" : "up";
+      claim(s, side);
+      p.exit = side;
       p.needA = false;
-      // The name moves to the side the edge does not use (only when the box reserved it).
-      const symmetric = graph.nodes.find((n) => n.id === sourceId)?.text.symmetric;
-      if (symmetric) labelSide.set(sourceId, down ? flippedSide : defaultSide);
       break;
     }
   }
+
+  // The name sits on whichever side the edges left it.
+  const defaultSide: LabelSide = orientation === "horizontal" ? "below" : "right";
+  const flippedSide: LabelSide = orientation === "horizontal" ? "above" : "left";
+  const labelSide = new Map<string, LabelSide>();
+  for (const [id, st] of sideState) labelSide.set(id, st.name === "up" ? flippedSide : defaultSide);
 
   /*
    * Channel positions. Each gap holds the verticals of edges leaving the layer
@@ -454,7 +539,7 @@ export async function layoutGraph(
       });
     }
     if (p.needB) {
-      const inL = p.kind === "gutter" ? p.rail : p.sc;
+      const inL = p.kind === "gutter" || p.kind === "loop" ? p.rail : p.sc;
       segs.push({
         edgeId: p.e.id,
         gap: p.t.layer - 1,
@@ -562,7 +647,15 @@ export async function layoutGraph(
     if (p.exit !== "front") {
       const sfc = s.f0 + (s.aF0 + s.aF1) / 2;
       const edgeL = sc + (p.exit === "down" ? s.aLHalf : -s.aLHalf);
-      if (p.kind === "loop") {
+      if (p.kind === "loop" && p.entry === "front") {
+        pts.push(
+          toXY(sfc, edgeL),
+          toXY(sfc, p.rail),
+          toXY(fb, p.rail),
+          toXY(fb, tc),
+          toXY(tf0, tc),
+        );
+      } else if (p.kind === "loop") {
         const tfc = t.f0 + (t.aF0 + t.aF1) / 2;
         const tEdge = tc + (p.entry === "down" ? t.aLHalf : -t.aLHalf);
         pts.push(toXY(sfc, edgeL), toXY(sfc, p.rail), toXY(tfc, p.rail), toXY(tfc, tEdge));
