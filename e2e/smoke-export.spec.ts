@@ -100,7 +100,7 @@ test("export svg/json and import with replace confirm", async ({ page }) => {
   const importPath = jsonPath + ".import.json";
   fs.writeFileSync(importPath, JSON.stringify(exported));
   await page.getByLabel("Import workspace file").setInputFiles(importPath);
-  const dlg = page.getByRole("alertdialog", { name: "Replace workspace" });
+  const dlg = page.getByRole("alertdialog", { name: "Import workspace" });
   await expect(dlg).toBeVisible();
   await dlg.getByRole("button", { name: "Cancel" }).click();
   await expect(
@@ -111,6 +111,19 @@ test("export svg/json and import with replace confirm", async ({ page }) => {
   await expect(
     page.getByTestId("process-switcher").getByLabel("Active process").locator("option:checked"),
   ).toHaveText("Imported process");
+
+  // Adding the same file keeps the current process and adds the file's beside it
+  await page.getByLabel("Import workspace file").setInputFiles(importPath);
+  await dlg.getByRole("button", { name: "Add to workspace" }).click();
+  const options = page
+    .getByTestId("process-switcher")
+    .getByLabel("Active process")
+    .locator("option");
+  await expect(options).toHaveText(["Imported process", "Imported process (imported)"]);
+  await expect(
+    page.getByTestId("process-switcher").getByLabel("Active process").locator("option:checked"),
+  ).toHaveText("Imported process (imported)");
+  await expect(page.getByRole("status").filter({ hasText: "Added 1 process" })).toBeVisible();
 
   // Invalid file is rejected with a readable message
   const badPath = jsonPath + ".bad.json";

@@ -88,7 +88,10 @@ a static site.
   processes.
 - **Saving**: the workspace autosaves to IndexedDB in this browser. Browser
   storage can be cleared, so use Export → Workspace JSON for a real copy and
-  Import to load it again.
+  Import to load it again. Importing into a workspace that already has
+  content asks whether to **add** the file's processes beside the current
+  ones (parties and teams with the same name are shared; the rest are
+  created) or **replace** the workspace with the file. Adding is undoable.
 - **Export**: the active process map as SVG, PNG (2x) or PDF, with a title
   block and a legend of every party on the map, owners and contributors alike.
   With a team highlighted or isolated, the export shows exactly what the map

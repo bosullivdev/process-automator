@@ -130,7 +130,13 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
 export function ImportButton() {
   const inputRef = useRef<HTMLInputElement>(null);
   const replaceWorkspace = useStore((s) => s.replaceWorkspace);
-  const [pending, setPending] = useState<{ name: string; apply: () => void } | null>(null);
+  const addWorkspace = useStore((s) => s.addWorkspace);
+  const [pending, setPending] = useState<{
+    name: string;
+    processes: number;
+    apply: () => void;
+    add: () => void;
+  } | null>(null);
 
   const onFile = async (file: File) => {
     try {
@@ -140,9 +146,14 @@ export function ImportButton() {
         useStore.temporal.getState().clear();
         toast(`Imported "${ws.meta.name}".`);
       };
+      const add = () => {
+        addWorkspace(ws);
+        const n = ws.processes.length;
+        toast(`Added ${n} ${n === 1 ? "process" : "processes"} from "${ws.meta.name}".`);
+      };
       const current = getWorkspace();
       if (!isWorkspaceEmpty(current) || hasUnsavedChanges())
-        setPending({ name: ws.meta.name, apply });
+        setPending({ name: ws.meta.name, processes: ws.processes.length, apply, add });
       else apply();
     } catch (err) {
       toast(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -171,16 +182,28 @@ export function ImportButton() {
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.3)" }}
           role="alertdialog"
-          aria-label="Replace workspace"
+          aria-label="Import workspace"
         >
-          <div className="menu flex w-96 flex-col gap-3 p-4">
+          <div className="menu flex w-[26rem] flex-col gap-3 p-4">
             <p className="text-sm">
-              Replace the current workspace with <strong>{pending.name}</strong>? The current
-              workspace will be lost unless you export it first.
+              Import <strong>{pending.name}</strong>: add its{" "}
+              {pending.processes === 1 ? "process" : `${pending.processes} processes`} to this
+              workspace, or replace the workspace with it? Replacing loses the current workspace
+              unless you export it first.
             </p>
             <div className="flex justify-end gap-2">
               <button className="btn" autoFocus onClick={() => setPending(null)}>
                 Cancel
+              </button>
+              <button
+                className="btn"
+                title="Keep the current processes and add the file's processes beside them. Parties and teams with the same name are shared."
+                onClick={() => {
+                  pending.add();
+                  setPending(null);
+                }}
+              >
+                Add to workspace
               </button>
               <button
                 className="btn btn-primary"

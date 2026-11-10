@@ -17,6 +17,7 @@ import {
   mergeParties as mergePartiesPure,
 } from "../model/party";
 import { assignOwners as assignOwnersPure } from "../model/share";
+import { mergeWorkspace } from "../model/import";
 import {
   mergeSteps as mergeStepsPure,
   setOwnersForTeam as setOwnersForTeamPure,
@@ -112,6 +113,8 @@ export interface StoreState extends DocState {
 
   // --- document edits (undoable)
   replaceWorkspace: (ws: Workspace) => void;
+  /** Add a file's processes to this workspace, matching parties and teams by name. Undoable. */
+  addWorkspace: (ws: Workspace) => void;
   setWorkspaceName: (name: string) => void;
 
   addStep: (processId: string, opts?: { afterStepId?: string; partial?: Partial<Step> }) => string;
@@ -248,6 +251,19 @@ export const useStore = create<StoreState>()(
             view: ws.view,
             selectedStepId: null,
           }),
+        addWorkspace: (ws) => {
+          const merged = mergeWorkspace(get(), ws);
+          edit((d) => {
+            d.parties = merged.parties;
+            d.teams = merged.teams;
+            d.processes = merged.processes;
+          });
+          if (merged.activeProcessId)
+            set((s) => ({
+              view: { ...s.view, activeProcessId: merged.activeProcessId },
+              selectedStepId: null,
+            }));
+        },
         setWorkspaceName: (name) =>
           edit((d) => {
             d.meta.name = name;

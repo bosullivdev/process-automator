@@ -324,6 +324,72 @@ describe("decision side exits", () => {
   });
 });
 
+describe("rows within a lane", () => {
+  it("keeps a chain in one row when another step shares a layer with its middle", async () => {
+    const top = party("Finance BP", 0);
+    const bottom = party("Finance manager", 1);
+    // Chain a -> b -> c -> d along the top lane; x (bottom lane) feeds y, which
+    // shares b's layer in the top lane, then returns to z in the bottom lane.
+    const proc = process(
+      [
+        step({ id: "a", displayNo: 1, type: "start", ownerId: top.id, next: [{ targetId: "b" }] }),
+        step({ id: "b", displayNo: 2, ownerId: top.id, next: [{ targetId: "c" }] }),
+        step({ id: "c", displayNo: 3, ownerId: top.id, next: [{ targetId: "d" }] }),
+        step({ id: "d", displayNo: 4, type: "end", ownerId: top.id }),
+        step({
+          id: "x",
+          displayNo: 5,
+          type: "start",
+          ownerId: bottom.id,
+          next: [{ targetId: "y" }],
+        }),
+        step({ id: "y", displayNo: 6, ownerId: top.id, next: [{ targetId: "z" }] }),
+        step({ id: "z", displayNo: 7, type: "end", ownerId: bottom.id }),
+      ],
+      { laneOrder: [top.id, bottom.id] },
+    );
+    const graph = buildLayoutGraph(proc, [top, bottom], "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const ys = ["a", "b", "c", "d"].map((id) => shape(graph, r, id).cy);
+    expect(new Set(ys).size, "chain stays in one row").toBe(1);
+    expect(shape(graph, r, "y").cy).not.toBe(ys[0]);
+    expect(r.edges.find((e) => e.id === "a->b")!.points).toHaveLength(2);
+    expect(r.edges.find((e) => e.id === "b->c")!.points).toHaveLength(2);
+    expect(r.edges.find((e) => e.id === "c->d")!.points).toHaveLength(2);
+  });
+
+  it("turns in the channel that crosses fewer arrows", async () => {
+    const top = party("Head", 0);
+    const bottom = party("Team", 1);
+    // Bottom row: start -> a -> e (end at the top lane, three layers on).
+    // Top row: p -> q -> r spans the layers between, so turning right after
+    // "a" would cut through p -> q and q -> r; turning before "e" crosses nothing.
+    const proc = process(
+      [
+        step({
+          id: "s",
+          displayNo: 1,
+          type: "start",
+          ownerId: bottom.id,
+          next: [{ targetId: "a" }],
+        }),
+        step({ id: "a", displayNo: 2, ownerId: bottom.id, next: [{ targetId: "e" }] }),
+        step({ id: "p", displayNo: 3, type: "start", ownerId: top.id, next: [{ targetId: "q" }] }),
+        step({ id: "q", displayNo: 4, ownerId: top.id, next: [{ targetId: "r" }] }),
+        step({ id: "r", displayNo: 5, ownerId: top.id, next: [{ targetId: "e" }] }),
+        step({ id: "e", displayNo: 6, type: "end", ownerId: top.id }),
+      ],
+      { laneOrder: [top.id, bottom.id] },
+    );
+    const graph = buildLayoutGraph(proc, [top, bottom], "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const ae = r.edges.find((e) => e.id === "a->e")!;
+    for (const id of ["p->q", "q->r"]) {
+      expect(crossings(ae.points, r.edges.find((e) => e.id === id)!.points), id).toBe(0);
+    }
+  });
+});
+
 describe("same-row alignment", () => {
   it("draws straight arrows between mixed shapes in one row", async () => {
     const ops = party("Ops", 0);

@@ -174,7 +174,49 @@ export async function layoutGraph(
     return { lines, extent: Math.max(extent, avail + HEADER_PAD_L * 2) };
   };
 
-  // ---- 2. Lanes: rows per (lane, layer) in ELK order.
+  // ---- 2. Lanes. Rows: a chain of steps that stays in one lane keeps one
+  // row, so its arrows run straight along the lane instead of stepping
+  // between rows wherever another step shares a layer with one of its
+  // members. Chains are followed along forward same-lane links where each
+  // step has one such successor and the successor one such predecessor.
+  // Rows are then dealt out per lane in ELK order: each chain takes the first
+  // row whose layers it does not share with a chain already there.
+  const chainOut = new Map<string, Set<string>>();
+  const chainIn = new Map<string, Set<string>>();
+  for (const e of graph.edges) {
+    if (reversed.has(e.id)) continue;
+    const s = nodes.get(e.from);
+    const t = nodes.get(e.to);
+    if (!s || !t || s.laneId !== t.laneId || t.layer <= s.layer) continue;
+    chainOut.set(s.id, (chainOut.get(s.id) ?? new Set()).add(t.id));
+    chainIn.set(t.id, (chainIn.get(t.id) ?? new Set()).add(s.id));
+  }
+  const chainNext = (id: string): string | undefined => {
+    const out = chainOut.get(id);
+    if (!out || out.size !== 1) return undefined;
+    const [next] = out;
+    return chainIn.get(next)?.size === 1 ? next : undefined;
+  };
+  const runOf = new Map<string, FLNode[]>();
+  for (const n of nodes.values()) {
+    if (runOf.has(n.id)) continue;
+    // Walk back to the head of the chain, then forward along it.
+    let head = n;
+    const seen = new Set([head.id]);
+    for (;;) {
+      const prev = [...(chainIn.get(head.id) ?? [])];
+      if (prev.length !== 1 || chainNext(prev[0]) !== head.id || seen.has(prev[0])) break;
+      head = nodes.get(prev[0])!;
+      seen.add(head.id);
+    }
+    const run: FLNode[] = [];
+    for (let cur: FLNode | undefined = head; cur && !runOf.has(cur.id);) {
+      run.push(cur);
+      runOf.set(cur.id, run);
+      const next = chainNext(cur.id);
+      cur = next ? nodes.get(next) : undefined;
+    }
+  }
   const lanes: Array<{
     id: string;
     l0: number;
@@ -193,14 +235,25 @@ export async function layoutGraph(
     const above = Math.max(...laneNodes.map((n) => n.aL));
     const below = Math.max(...laneNodes.map((n) => n.lExtent - n.aL));
     const rowH = above + below;
-    let rows = 1;
-    for (let k = 0; k < layerCount; k++) {
-      const inCell = laneNodes
-        .filter((n) => n.layer === k)
-        .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-      rows = Math.max(rows, inCell.length);
-      inCell.forEach((n, i) => (n.row = i));
+    const runs = [...new Set(laneNodes.map((n) => runOf.get(n.id)!))]
+      .map((run) => ({
+        run,
+        order: run.reduce((sum, n) => sum + n.order, 0) / run.length,
+        first: Math.min(...run.map((n) => n.layer)),
+      }))
+      .sort(
+        (a, b) => a.order - b.order || a.first - b.first || a.run[0].id.localeCompare(b.run[0].id),
+      );
+    const tracks: Array<Set<number>> = [];
+    for (const { run } of runs) {
+      let row = tracks.findIndex((taken) => run.every((n) => !taken.has(n.layer)));
+      if (row < 0) row = tracks.push(new Set()) - 1;
+      for (const n of run) {
+        n.row = row;
+        tracks[row].add(n.layer);
+      }
     }
+    const rows = Math.max(1, tracks.length);
     const l0 = l;
     const natural = LANE_PAD * 2 + rows * rowH + (rows - 1) * GAP_L;
     const { lines, extent: height } = headerLines(graph.laneNames?.[laneId] ?? "", natural);
@@ -279,6 +332,8 @@ export async function layoutGraph(
     needB: boolean; // channel before the target
     exit: Exit; // which side of the source shape the edge leaves from
     entry: Exit; // which side of the target shape the edge enters (loop only)
+    /** A target-row run whose source-row run is also clear, so either may be used. */
+    flexible?: boolean;
   }
 
   /**
@@ -368,6 +423,7 @@ export async function layoutGraph(
       } else if (clearRun(colEndS, tf0, tc, skip)) {
         plan.kind = "targetLine";
         plan.needB = false;
+        plan.flexible = clearRun(sf1, colStartT, sc, skip);
       } else if (clearRun(sf1, colStartT, sc, skip)) {
         plan.kind = "sourceLine";
         plan.needA = false;
@@ -394,6 +450,83 @@ export async function layoutGraph(
    * arrive. A loop never touches a node or a name. When no rail gives a clear
    * loop, the edge goes around the outside of the band.
    */
+  /*
+   * Where each arrow will roughly run (channel verticals at the middle of
+   * their gap), so a route can be scored by the crossings it would add.
+   */
+  type FL = { f: number; l: number };
+  const gapMid = (g: number) => {
+    const [g0, g1] = gapRange(g);
+    return (g0 + g1) / 2;
+  };
+  const roughPath = (p: EdgePlan, kind = p.kind): FL[] => {
+    const sf1 = p.s.f0 + p.s.aF1;
+    const tf0 = p.t.f0 + p.t.aF0;
+    // Verticals of edges leaving a layer sit before those of edges arriving.
+    const fa = gapMid(p.s.layer) - 6;
+    const fb = gapMid(p.t.layer - 1) + 6;
+    const a = { f: sf1, l: p.sc };
+    const z = { f: tf0, l: p.tc };
+    switch (kind) {
+      case "straight":
+        return [a, z];
+      case "targetLine":
+        return [a, { f: fa, l: p.sc }, { f: fa, l: p.tc }, z];
+      case "sourceLine":
+        return [a, { f: fb, l: p.sc }, { f: fb, l: p.tc }, z];
+      default:
+        return [
+          a,
+          { f: fa, l: p.sc },
+          { f: fa, l: p.rail },
+          { f: fb, l: p.rail },
+          { f: fb, l: p.tc },
+          z,
+        ];
+    }
+  };
+  const segsCross = (a1: FL, a2: FL, b1: FL, b2: FL): boolean => {
+    const aAlongL = Math.abs(a1.f - a2.f) < 0.01;
+    const bAlongL = Math.abs(b1.f - b2.f) < 0.01;
+    if (aAlongL === bAlongL) return false;
+    const [v1, v2, h1, h2] = aAlongL ? [a1, a2, b1, b2] : [b1, b2, a1, a2];
+    return (
+      v1.f > Math.min(h1.f, h2.f) + 0.5 &&
+      v1.f < Math.max(h1.f, h2.f) - 0.5 &&
+      h1.l > Math.min(v1.l, v2.l) + 0.5 &&
+      h1.l < Math.max(v1.l, v2.l) - 0.5
+    );
+  };
+  const roughPaths = new Map<EdgePlan, FL[]>();
+  for (const p of plans) if (p.kind !== "back") roughPaths.set(p, roughPath(p));
+  const pathCrossings = (pts: FL[], self?: EdgePlan): number => {
+    let n = 0;
+    for (const [p, other] of roughPaths) {
+      if (p === self) continue;
+      for (let i = 1; i < pts.length; i++) {
+        for (let j = 1; j < other.length; j++) {
+          if (segsCross(pts[i - 1], pts[i], other[j - 1], other[j])) n++;
+        }
+      }
+    }
+    return n;
+  };
+
+  // An arrow that could turn in either channel takes the one that crosses
+  // fewer of the other arrows: a run along the target row when equal, so a
+  // fan-out still parts right after its source.
+  for (const p of plans) {
+    if (!p.flexible) continue;
+    const viaTarget = pathCrossings(roughPaths.get(p)!, p);
+    const viaSource = roughPath(p, "sourceLine");
+    if (pathCrossings(viaSource, p) < viaTarget) {
+      p.kind = "sourceLine";
+      p.needA = false;
+      p.needB = true;
+      roughPaths.set(p, viaSource);
+    }
+  }
+
   // The side each fan-out would like for its farthest outcome (see "Side
   // exits" below). A loop avoids taking that side from either end, so the
   // outcome keeps its side exit instead of turning in the channel across the
@@ -417,68 +550,6 @@ export async function layoutGraph(
       if (far) wantedSide.set(id, far.goal > far.p.sc ? "down" : "up");
     }
   }
-
-  /*
-   * Where the forward arrows will roughly run (channel verticals at the middle
-   * of their gap), so each loop candidate can be scored by the crossings it
-   * would add. Loops already placed count too.
-   */
-  type FL = { f: number; l: number };
-  const gapMid = (g: number) => {
-    const [g0, g1] = gapRange(g);
-    return (g0 + g1) / 2;
-  };
-  const roughPaths: FL[][] = plans
-    .filter((p) => p.kind !== "back")
-    .map((p) => {
-      const sf1 = p.s.f0 + p.s.aF1;
-      const tf0 = p.t.f0 + p.t.aF0;
-      // Verticals of edges leaving a layer sit before those of edges arriving.
-      const fa = gapMid(p.s.layer) - 6;
-      const fb = gapMid(p.t.layer - 1) + 6;
-      const a = { f: sf1, l: p.sc };
-      const z = { f: tf0, l: p.tc };
-      switch (p.kind) {
-        case "straight":
-          return [a, z];
-        case "targetLine":
-          return [a, { f: fa, l: p.sc }, { f: fa, l: p.tc }, z];
-        case "sourceLine":
-          return [a, { f: fb, l: p.sc }, { f: fb, l: p.tc }, z];
-        default:
-          return [
-            a,
-            { f: fa, l: p.sc },
-            { f: fa, l: p.rail },
-            { f: fb, l: p.rail },
-            { f: fb, l: p.tc },
-            z,
-          ];
-      }
-    });
-  const segsCross = (a1: FL, a2: FL, b1: FL, b2: FL): boolean => {
-    const aAlongL = Math.abs(a1.f - a2.f) < 0.01;
-    const bAlongL = Math.abs(b1.f - b2.f) < 0.01;
-    if (aAlongL === bAlongL) return false;
-    const [v1, v2, h1, h2] = aAlongL ? [a1, a2, b1, b2] : [b1, b2, a1, a2];
-    return (
-      v1.f > Math.min(h1.f, h2.f) + 0.5 &&
-      v1.f < Math.max(h1.f, h2.f) - 0.5 &&
-      h1.l > Math.min(v1.l, v2.l) + 0.5 &&
-      h1.l < Math.max(v1.l, v2.l) - 0.5
-    );
-  };
-  const pathCrossings = (pts: FL[]): number => {
-    let n = 0;
-    for (const other of roughPaths) {
-      for (let i = 1; i < pts.length; i++) {
-        for (let j = 1; j < other.length; j++) {
-          if (segsCross(pts[i - 1], pts[i], other[j - 1], other[j])) n++;
-        }
-      }
-    }
-    return n;
-  };
 
   /** Would claiming this side leave the node's wanted side unusable (taken, or now holding the name)? */
   const blocksWanted = (n: FLNode, side: Side): boolean => {
@@ -589,7 +660,7 @@ export async function layoutGraph(
       plan.entry = best.entry;
       plan.needA = false;
       plan.needB = best.entry === "front";
-      roughPaths.push(best.pts);
+      roughPaths.set(plan, best.pts);
       loopRails.set(s.id, [...(loopRails.get(s.id) ?? []), best.rail]);
     }
     if (plan.kind === "back") {
