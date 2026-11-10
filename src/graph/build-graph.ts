@@ -287,7 +287,15 @@ export function buildLayoutGraph(
       laneOrder.splice(laneOrder.length - (used.has(UNASSIGNED_LANE) ? 1 : 0), 0, id);
   }
 
-  return { laneOrder, nodes, edges };
+  const laneNames: Record<string, string> = {};
+  for (const id of laneOrder) {
+    laneNames[id] =
+      id === UNASSIGNED_LANE
+        ? "Unassigned"
+        : (parties.find((p) => p.id === id)?.name.trim() ?? "Unknown");
+  }
+
+  return { laneOrder, laneNames, nodes, edges };
 }
 
 /**

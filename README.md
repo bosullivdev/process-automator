@@ -67,7 +67,10 @@ a static site.
   it and use the arrow keys) to reorder lanes. Orientation, shape mode
   (simple / BPMN) and detail level are toggles in the header. At full detail a
   task shows its technology as a pill and its contributors as initial badges
-  in party colours; "Minimal" hides both for a cleaner picture.
+  in party colours; "Minimal" hides both for a cleaner picture. The lane
+  header wraps a long party name along the lane in up to three lines and
+  thickens to fit them; a name that still would not fit widens its lane, so
+  no name runs into the lanes beside it.
 - **Validation**: a drawer under the table lists errors and warnings for the
   active process; click one to jump to the step. Broken links offer a
   one-click "Remove link".

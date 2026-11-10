@@ -468,3 +468,79 @@ describe("feedback loops", () => {
     expect(r.height).toBeGreaterThan(bandBottom);
   });
 });
+
+describe("lane headers", () => {
+  const LONG = "Financial planning and analysis business partnering team";
+
+  function twoLanes(nameA: string, nameB: string) {
+    const a = party(nameA, 0);
+    const b = party(nameB, 1);
+    const proc = process(
+      [
+        step({ id: "s", displayNo: 1, type: "start", ownerId: a.id, next: [{ targetId: "t" }] }),
+        step({ id: "t", displayNo: 2, ownerId: b.id, next: [{ targetId: "e" }] }),
+        step({ id: "e", displayNo: 3, type: "end", ownerId: a.id }),
+      ],
+      { laneOrder: [a.id, b.id] },
+    );
+    return { proc, parties: [a, b], a, b };
+  }
+
+  it("keeps a one-line band for short names", async () => {
+    const { proc, parties } = twoLanes("Sales", "Ops");
+    const graph = buildLayoutGraph(proc, parties, "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    expect(r.lanes.map((l) => l.header.lines)).toEqual([["Sales"], ["Ops"]]);
+    expect(r.lanes.every((l) => l.header.width === 36)).toBe(true);
+  });
+
+  it("wraps a long name along the lane and thickens every band to fit", async () => {
+    const { proc, parties, a, b } = twoLanes(LONG, "Ops");
+    const graph = buildLayoutGraph(proc, parties, "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const la = r.lanes.find((l) => l.id === a.id)!;
+    const lb = r.lanes.find((l) => l.id === b.id)!;
+    expect(la.header.lines.length).toBeGreaterThan(1);
+    expect(la.header.lines.length).toBeLessThanOrEqual(3);
+    expect(la.header.lines.join(" ")).toBe(LONG);
+    expect(la.header.width).toBe(la.header.lines.length * 14 + 22);
+    // Bands share one thickness so the columns line up across lanes.
+    expect(lb.header.width).toBe(la.header.width);
+    expect(lb.header.lines).toEqual(["Ops"]);
+    // Every line fits inside its lane's extent.
+    const widest = Math.max(...la.header.lines.map((s) => s.length));
+    expect(widest * 12 * 0.62).toBeLessThanOrEqual(la.height - 24);
+    // The first column still starts after the band.
+    const firstX = Math.min(...r.nodes.map((n) => n.x));
+    expect(firstX).toBeGreaterThan(la.header.width);
+  });
+
+  it("widens the lane when even three lines cannot hold the name, keeping nodes inside", async () => {
+    const { proc, parties, a } = twoLanes(`${LONG} ${LONG} ${LONG}`, "Ops");
+    const graph = buildLayoutGraph(proc, parties, "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const la = r.lanes.find((l) => l.id === a.id)!;
+    const plain = await layoutGraph(
+      buildLayoutGraph(twoLanes("A", "B").proc, twoLanes("A", "B").parties, "simple"),
+      "horizontal",
+      elk,
+    );
+    expect(la.header.lines.length).toBe(3);
+    expect(la.height).toBeGreaterThan(plain.lanes[0].height);
+    for (const id of ["s", "e"]) {
+      const n = r.nodes.find((p) => p.id === id)!;
+      expect(n.y).toBeGreaterThanOrEqual(la.y);
+      expect(n.y + n.height).toBeLessThanOrEqual(la.y + la.height);
+    }
+  });
+
+  it("wraps across the lane width in vertical orientation", async () => {
+    const { proc, parties, a } = twoLanes(LONG, "Ops");
+    const graph = buildLayoutGraph(proc, parties, "simple");
+    const r = await layoutGraph(graph, "vertical", elk);
+    const la = r.lanes.find((l) => l.id === a.id)!;
+    expect(la.header.lines.length).toBeGreaterThan(1);
+    expect(la.header.height).toBe(la.header.lines.length * 14 + 22);
+    expect(la.header.width).toBe(la.width);
+  });
+});

@@ -241,7 +241,7 @@ function laneShapes(c: Ctx, ctx: VsdxContext): void {
         character(9, colour.text, true) +
         paragraph(1) +
         relGeometry(RECT) +
-        `<Text>${esc(name)}</Text>`,
+        `<Text>${esc(lane.header.lines.join("\n") || name)}</Text>`,
     );
   }
 }

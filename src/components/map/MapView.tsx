@@ -370,7 +370,15 @@ export function MapView({
                     fill={c.text}
                     style={{ pointerEvents: "none" }}
                   >
-                    {laneName(lane.id)}
+                    {lane.header.lines.map((line, li) => (
+                      <tspan
+                        key={li}
+                        x={hx}
+                        y={hy + (li - (lane.header.lines.length - 1) / 2) * 14}
+                      >
+                        {line}
+                      </tspan>
+                    ))}
                   </text>
                 </g>
                 {drag && dropIndex === i && (

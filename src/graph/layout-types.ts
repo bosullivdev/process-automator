@@ -60,6 +60,8 @@ export interface LayoutEdge {
 export interface LayoutGraph {
   /** Lane ids in display order; only lanes with at least one node. */
   laneOrder: string[];
+  /** Display name per lane id, used to size the lane header band. */
+  laneNames?: Record<string, string>;
   nodes: LayoutNode[];
   edges: LayoutEdge[];
 }
@@ -95,8 +97,11 @@ export interface LaneBox {
   y: number;
   width: number;
   height: number;
-  /** Header strip, at the flow-axis start of the lane. */
-  header: { x: number; y: number; width: number; height: number };
+  /**
+   * Header strip, at the flow-axis start of the lane. Its thickness along the
+   * flow axis fits the name's lines; the name is wrapped along the lane.
+   */
+  header: { x: number; y: number; width: number; height: number; lines: string[] };
 }
 
 export interface LayoutResult {

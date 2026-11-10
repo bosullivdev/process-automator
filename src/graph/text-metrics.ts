@@ -24,7 +24,8 @@ export function measureText(text: string, fontSize: number, weight = 400): numbe
     c.font = `${weight} ${fontSize}px ${UI_FONT}`;
     return c.measureText(text).width;
   }
-  return text.length * fontSize * 0.58;
+  // Semibold Inter runs a little wider than regular.
+  return text.length * fontSize * (weight >= 600 ? 0.62 : 0.58);
 }
 
 /**

@@ -9,6 +9,7 @@ import type {
   PositionedNode,
   RoutedEdge,
 } from "./layout-types";
+import { measureText, wrapToWidth } from "./text-metrics";
 
 /*
  * Layout works in (f, l) space: f runs along the flow, l across the lanes.
@@ -20,7 +21,18 @@ import type {
  * the outside of the lane band.
  */
 
-const HEADER = 36; // lane header strip along the flow-axis start
+/*
+ * Lane header band. The party name runs along the lane, wrapped to the lane's
+ * extent in up to HEADER_MAX_LINES lines; the band is as thick (along the flow
+ * axis) as the most lines any lane needs. A name that would still not fit
+ * widens its lane instead, so a name never bleeds into the lanes beside it.
+ */
+const HEADER_FONT = 12;
+const HEADER_WEIGHT = 600;
+const HEADER_LINE_H = 14;
+const HEADER_PAD_F = 11; // band padding either side of the lines (one line = 36)
+const HEADER_PAD_L = 12; // padding at both ends of the lane
+const HEADER_MAX_LINES = 3;
 const MARGIN_F = 48; // space between header and first column (also a channel for back-edges into layer 0)
 const GAP_F = 64; // gap between layer columns
 const GAP_L = 28; // gap between rows inside a lane
@@ -133,10 +145,31 @@ export async function layoutGraph(
     });
   }
   const layerCount = xs.length;
-  const colStart = (k: number) => HEADER + MARGIN_F + k * (NODE_F + GAP_F);
+
+  /**
+   * Wrap a lane's name along a lane of the given extent. When it needs more
+   * than HEADER_MAX_LINES lines, the extent grows until it fits.
+   */
+  const headerLines = (name: string, extent: number): { lines: string[]; extent: number } => {
+    const full = Math.ceil(measureText(name, HEADER_FONT, HEADER_WEIGHT));
+    let avail = extent - HEADER_PAD_L * 2;
+    let lines = wrapToWidth(name, avail, HEADER_FONT, Infinity, HEADER_WEIGHT);
+    while (lines.length > HEADER_MAX_LINES && avail < full) {
+      avail = Math.min(full, avail + 16);
+      lines = wrapToWidth(name, avail, HEADER_FONT, Infinity, HEADER_WEIGHT);
+    }
+    return { lines, extent: Math.max(extent, avail + HEADER_PAD_L * 2) };
+  };
 
   // ---- 2. Lanes: rows per (lane, layer) in ELK order.
-  const lanes: Array<{ id: string; l0: number; l1: number; rowH: number; rows: number }> = [];
+  const lanes: Array<{
+    id: string;
+    l0: number;
+    l1: number;
+    rowH: number;
+    rows: number;
+    lines: string[];
+  }> = [];
   let l = 0;
   for (const laneId of graph.laneOrder) {
     const laneNodes = [...nodes.values()].filter((n) => n.laneId === laneId);
@@ -156,22 +189,32 @@ export async function layoutGraph(
       inCell.forEach((n, i) => (n.row = i));
     }
     const l0 = l;
-    const height = LANE_PAD * 2 + rows * rowH + (rows - 1) * GAP_L;
+    const natural = LANE_PAD * 2 + rows * rowH + (rows - 1) * GAP_L;
+    const { lines, extent: height } = headerLines(graph.laneNames?.[laneId] ?? "", natural);
     const l1 = l0 + height;
+    // A lane widened for its name keeps its rows centred.
+    const inset = (height - natural) / 2;
     for (const n of laneNodes) {
-      const slotTop = l0 + LANE_PAD + n.row * (rowH + GAP_L);
+      const slotTop = l0 + inset + LANE_PAD + n.row * (rowH + GAP_L);
       n.l0 = slotTop + above - n.aL;
       n.l1 = n.l0 + n.lExtent;
       n.rowBottom = slotTop + rowH;
-      n.rowGutter = n.row === rows - 1 ? l1 - LANE_PAD / 2 : n.rowBottom + GAP_L / 2;
-      n.rowGutterUp = n.row === 0 ? l0 + LANE_PAD / 2 : slotTop - GAP_L / 2;
-      n.f0 = colStart(n.layer) + (NODE_F - n.fExtent) / 2;
-      n.f1 = n.f0 + n.fExtent;
+      n.rowGutter = n.row === rows - 1 ? l1 - inset - LANE_PAD / 2 : n.rowBottom + GAP_L / 2;
+      n.rowGutterUp = n.row === 0 ? l0 + inset + LANE_PAD / 2 : slotTop - GAP_L / 2;
     }
-    lanes.push({ id: laneId, l0, l1, rowH, rows });
+    lanes.push({ id: laneId, l0, l1, rowH, rows, lines });
     l = l1;
   }
   const bandEnd = l;
+
+  // Header band thickness: enough for the most lines any lane needs, one line at least.
+  const HEADER =
+    Math.max(1, ...lanes.map((ln) => ln.lines.length)) * HEADER_LINE_H + HEADER_PAD_F * 2;
+  const colStart = (k: number) => HEADER + MARGIN_F + k * (NODE_F + GAP_F);
+  for (const n of nodes.values()) {
+    n.f0 = colStart(n.layer) + (NODE_F - n.fExtent) / 2;
+    n.f1 = n.f0 + n.fExtent;
+  }
   const fEnd = colStart(layerCount - 1) + NODE_F + END_MARGIN_F;
 
   // ---- 3. Edges. Channels: gap index g spans [colStart(g)+NODE_F, colStart(g+1)];
@@ -547,7 +590,7 @@ export async function layoutGraph(
       y: p.y,
       width: size.x,
       height: size.y,
-      header: { x: hp.x, y: hp.y, width: hs.x, height: hs.y },
+      header: { x: hp.x, y: hp.y, width: hs.x, height: hs.y, lines: ln.lines },
     };
   });
 
