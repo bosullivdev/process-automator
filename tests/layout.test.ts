@@ -99,14 +99,14 @@ describe("layout", () => {
       expect(n.y).toBeGreaterThanOrEqual(lane.y);
       expect(n.y + n.height).toBeLessThanOrEqual(lane.y + lane.height);
     }
-    // The "Rework" feedback loops back inside the band and enters b from below.
+    // The "Rework" feedback loops back inside the band and enters b from above or below.
     const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
     const back = r.edges.find((e) => e.id === "c->b")!;
     expect(Math.max(...back.points.map((p) => p.y))).toBeLessThan(bandBottom);
     const b = shape(graph, r, "b");
     const last = back.points[back.points.length - 1];
     expect(last.x).toBeCloseTo(b.cx);
-    expect(last.y).toBeCloseTo(b.bottom);
+    expect([b.top, b.bottom].some((y) => Math.abs(y - last.y) < 0.01)).toBe(true);
     expect(r.height).toBeGreaterThanOrEqual(bandBottom);
     // labels exist for decision outcomes
     expect(
@@ -477,9 +477,9 @@ describe("feedback loops", () => {
     const fin = party("Finance", 0);
     const dept = party("Department head", 1);
     // issue -> q; q: Yes -> review, No -> develop; review -> q and develop -> q loop back.
-    // "No" wants the diamond's bottom, so the first loop comes in over the top;
-    // the name stays below and the second loop, with no side left, comes in at
-    // the front.
+    // "No" wants the diamond's bottom and the name must then move up, so
+    // neither side is free for a loop: both come in at the front, sharing a
+    // trunk, and "No" keeps its side exit.
     const proc = process(
       [
         step({
@@ -518,18 +518,19 @@ describe("feedback loops", () => {
     const first = r.edges.find((e) => e.id === "review->q")!;
     const second = r.edges.find((e) => e.id === "develop->q")!;
     expect(r.nodes.find((n) => n.id === "review")!.layer).toBeGreaterThan(qn.layer);
-    // First loop: into the diamond's top, leaving the bottom to "No"; the name stays below.
+    // Both loops: round through the channel before the diamond and in at its left point.
     const l1 = first.points[first.points.length - 1];
-    expect(l1.x).toBeCloseTo(q.cx);
-    expect(l1.y).toBeCloseTo(q.top);
-    expect(qn.labelSide).toBe("below");
-    // Second loop: round through the channel before the diamond and in at its left point.
+    expect(l1.x).toBeCloseTo(q.left);
+    expect(l1.y).toBeCloseTo(q.cy);
+    expect(qn.labelSide).toBe("above");
+    const no = r.edges.find((e) => e.id === "q->develop")!;
+    expect(no.points[0].y).toBeCloseTo(q.bottom);
     const l2 = second.points[second.points.length - 1];
     expect(l2.x).toBeCloseTo(q.left);
     expect(l2.y).toBeCloseTo(q.cy);
     expect(second.points.length).toBeGreaterThanOrEqual(5);
-    // Neither loop passes through the name block below the diamond.
-    const name = { x0: qn.x, x1: qn.x + qn.width, y0: q.bottom, y1: qn.y + qn.height };
+    // Neither loop passes through the name block above the diamond.
+    const name = { x0: qn.x, x1: qn.x + qn.width, y0: qn.y, y1: q.top };
     expect(passesThrough(first.points, name)).toBe(false);
     expect(passesThrough(second.points, name)).toBe(false);
     // Both stay inside the band.
@@ -597,11 +598,11 @@ describe("feedback loops", () => {
     }
   });
 
-  it("still routes around the outside of the band when the source has no side left", async () => {
+  it("lets two loops from one step share its exit and stay inside the band", async () => {
     const fin = party("Finance", 0);
     // s, b and d all lead to c, which (with a technology pill below) loops back
-    // to both b and d. The first loop takes c's bottom and the pill moves above;
-    // the second loop finds neither side free and goes round the outside.
+    // to both b and d. Both loops leave c's bottom on one trunk and part on
+    // their rails.
     const proc = process(
       [
         step({
@@ -634,8 +635,14 @@ describe("feedback loops", () => {
     const toB = r.edges.find((e) => e.id === "c->b")!;
     const toD = r.edges.find((e) => e.id === "c->d")!;
     expect(Math.max(...toB.points.map((p) => p.y))).toBeLessThan(bandBottom);
-    expect(Math.max(...toD.points.map((p) => p.y))).toBeGreaterThan(bandBottom);
-    expect(r.height).toBeGreaterThan(bandBottom);
+    expect(Math.max(...toD.points.map((p) => p.y))).toBeLessThan(bandBottom);
+    expect(toB.points[0]).toEqual(toD.points[0]);
+    // b and d send their own arrows to c out of their bottoms, so the loops come
+    // in over the top; c's pill stays below its exit-free side.
+    const c = shape(graph, r, "c");
+    expect(toB.points[0].y).toBeCloseTo(c.top);
+    expect(r.nodes.find((n) => n.id === "c")!.labelSide).toBe("below");
+    expect(r.height).toBeLessThanOrEqual(bandBottom + 8);
   });
 });
 

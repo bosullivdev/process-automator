@@ -124,7 +124,10 @@ so it cannot produce swim lanes on its own. Lanes are therefore applied in a
 deterministic post-pass in `src/graph/layout.ts`: nodes keep their ELK layer
 and in-layer order, and are stacked into lane bands in `laneOrder`. Edges are
 routed orthogonally through node-free channels between layers and gutters
-between rows. A back-edge (a feedback loop such as a "No" outcome returning
+between rows. Feedback is found by a depth-first walk from the starts in step
+order, so the arrow that closes a cycle is the one back to the earlier step
+(a decision never lands before the step it checks), and every lane copy of a
+shared step treats the same link as its feedback. A back-edge (a feedback loop such as a "No" outcome returning
 to an earlier step) leaves the bottom or top of its source, runs along the
 nearest node-free gutter and enters the bottom or top of its target, so it
 reads as repeating that step; when no such loop is clear of every step and

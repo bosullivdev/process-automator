@@ -174,3 +174,72 @@ describe("co-owners elsewhere in the model", () => {
     expect(out.processes[0].steps.every((s) => s.coOwnerIds.length === 0)).toBe(true);
   });
 });
+
+describe("cycle breaking with lane copies", () => {
+  it("treats the same link as feedback in every lane copy, so copies share a column", async () => {
+    const a = party("A", 0);
+    const b = party("B", 1);
+    const c = party("C", 2);
+    // s -> review(A) -> collate(A + B) -> prepare(C) -> ok?(C): No -> collate, Yes -> end
+    const proc = process(
+      [
+        step({ id: "s", displayNo: 1, type: "start", ownerId: a.id, next: [{ targetId: "r" }] }),
+        step({ id: "r", displayNo: 2, ownerId: c.id, next: [{ targetId: "col" }] }),
+        step({
+          id: "col",
+          displayNo: 3,
+          ownerId: a.id,
+          coOwnerIds: [b.id],
+          next: [{ targetId: "p" }],
+        }),
+        step({ id: "p", displayNo: 4, ownerId: c.id, next: [{ targetId: "q" }] }),
+        step({
+          id: "q",
+          displayNo: 5,
+          type: "decision",
+          ownerId: c.id,
+          next: [
+            { targetId: "col", label: "No" },
+            { targetId: "e", label: "Yes" },
+          ],
+        }),
+        step({ id: "e", displayNo: 6, type: "end", ownerId: c.id }),
+      ],
+      { laneOrder: [a.id, b.id, c.id] },
+    );
+    const graph = buildLayoutGraph(proc, [a, b, c], "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const layer = (id: string) => r.nodes.find((n) => n.id === id)!.layer;
+    expect(layer(laneNodeId("col", b.id))).toBe(layer("col"));
+    expect(layer("p")).toBe(layer("col") + 1);
+    expect(layer("q")).toBe(layer("p") + 1);
+    // Both "No" arrows are loops back into the copies, inside the band.
+    const bandBottom = Math.max(...r.lanes.map((l) => l.y + l.height));
+    for (const id of ["q->col", `q->${laneNodeId("col", b.id)}`]) {
+      const e = r.edges.find((x) => x.id === id)!;
+      expect(e.points.length).toBeGreaterThanOrEqual(4);
+      expect(Math.max(...e.points.map((pt) => pt.y))).toBeLessThan(bandBottom);
+    }
+  });
+
+  it("keeps a later-numbered step that links forward to an earlier-numbered one as a forward arrow", async () => {
+    const a = party("A", 0);
+    // Step 4 was added later and feeds step 2; there is no cycle, so 4 sits before 2.
+    const proc = process(
+      [
+        step({ id: "s", displayNo: 1, type: "start", ownerId: a.id, next: [{ targetId: "late" }] }),
+        step({ id: "two", displayNo: 2, ownerId: a.id, next: [{ targetId: "e" }] }),
+        step({ id: "e", displayNo: 3, type: "end", ownerId: a.id }),
+        step({ id: "late", displayNo: 4, ownerId: a.id, next: [{ targetId: "two" }] }),
+      ],
+      { laneOrder: [a.id] },
+    );
+    const graph = buildLayoutGraph(proc, [a], "simple");
+    const r = await layoutGraph(graph, "horizontal", elk);
+    const layer = (id: string) => r.nodes.find((n) => n.id === id)!.layer;
+    expect(layer("late")).toBe(1);
+    expect(layer("two")).toBe(2);
+    const fwd = r.edges.find((x) => x.id === "late->two")!;
+    expect(fwd.points).toHaveLength(2);
+  });
+});

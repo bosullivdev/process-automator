@@ -72,6 +72,8 @@ export const ELK_OPTIONS: Record<string, string> = {
   "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
   "elk.layered.crossingMinimization.forceNodeModelOrder": "true",
   "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+  // Cycles are broken before ELK sees the graph (see backEdges); this only
+  // applies if something slips through.
   "elk.layered.cycleBreaking.strategy": "GREEDY_MODEL_ORDER",
   "elk.layered.layering.strategy": "NETWORK_SIMPLEX",
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
@@ -97,6 +99,13 @@ export async function layoutGraph(
   }
 
   // ---- 1. ELK: layers and order. Uniform flow extent so x identifies the layer.
+  // Cycles are broken here, not by ELK: a depth-first walk from the starts in
+  // step order follows the natural flow, and an edge that closes a cycle is
+  // the feedback ("No" back to an earlier step). ELK's own greedy breaker
+  // would sometimes reverse the forward edge instead, drawing a decision
+  // before the step it checks. Only true cycles are reversed, so a later
+  // step linking forward to an earlier-numbered one stays a forward arrow.
+  const reversed = backEdges(graph);
   const NODE_F = Math.max(...graph.nodes.map((n) => extents(n.width, n.height, orientation)[0]));
   const elkGraph: ElkNode = {
     id: "root",
@@ -107,7 +116,11 @@ export async function layoutGraph(
       height: extents(n.width, n.height, orientation)[1],
       layoutOptions: n.pinFirst ? { "elk.layered.layering.layerConstraint": "FIRST" } : undefined,
     })),
-    edges: graph.edges.map((e) => ({ id: e.id, sources: [e.from], targets: [e.to] })),
+    edges: graph.edges.map((e) =>
+      reversed.has(e.id)
+        ? { id: e.id, sources: [e.to], targets: [e.from] }
+        : { id: e.id, sources: [e.from], targets: [e.to] },
+    ),
   };
   const laid = await elk.layout(elkGraph);
   const xs = Array.from(new Set((laid.children ?? []).map((c) => Math.round(c.x ?? 0)))).sort(
@@ -287,20 +300,29 @@ export async function layoutGraph(
    */
   type Side = "up" | "down";
   const other = (side: Side): Side => (side === "down" ? "up" : "down");
-  const sideState = new Map<string, { name: Side | null; used: Set<Side> }>();
+  const sideState = new Map<
+    string,
+    { name: Side | null; used: Set<Side>; loopExit: Side | null }
+  >();
   for (const n of nodes.values()) {
-    sideState.set(n.id, { name: boxBeyond(n, "down") > 6 ? "down" : null, used: new Set() });
+    sideState.set(n.id, {
+      name: boxBeyond(n, "down") > 6 ? "down" : null,
+      used: new Set(),
+      loopExit: null,
+    });
   }
-  const canClaim = (n: FLNode, side: Side): boolean => {
+  /** Loops leaving one node share its exit side: they run up the same trunk and part on their rails. */
+  const canClaim = (n: FLNode, side: Side, loopExit = false): boolean => {
     const st = sideState.get(n.id)!;
-    if (st.used.has(side)) return false;
+    if (st.used.has(side)) return loopExit && st.loopExit === side;
     if (st.name === side) return symmetricOf(n.id) && !st.used.has(other(side));
     return true;
   };
-  const claim = (n: FLNode, side: Side): void => {
+  const claim = (n: FLNode, side: Side, loopExit = false): void => {
     const st = sideState.get(n.id)!;
     if (st.name === side) st.name = other(side);
     st.used.add(side);
+    if (loopExit) st.loopExit = side;
   };
 
   /*
@@ -396,13 +418,95 @@ export async function layoutGraph(
     }
   }
 
+  /*
+   * Where the forward arrows will roughly run (channel verticals at the middle
+   * of their gap), so each loop candidate can be scored by the crossings it
+   * would add. Loops already placed count too.
+   */
+  type FL = { f: number; l: number };
+  const gapMid = (g: number) => {
+    const [g0, g1] = gapRange(g);
+    return (g0 + g1) / 2;
+  };
+  const roughPaths: FL[][] = plans
+    .filter((p) => p.kind !== "back")
+    .map((p) => {
+      const sf1 = p.s.f0 + p.s.aF1;
+      const tf0 = p.t.f0 + p.t.aF0;
+      // Verticals of edges leaving a layer sit before those of edges arriving.
+      const fa = gapMid(p.s.layer) - 6;
+      const fb = gapMid(p.t.layer - 1) + 6;
+      const a = { f: sf1, l: p.sc };
+      const z = { f: tf0, l: p.tc };
+      switch (p.kind) {
+        case "straight":
+          return [a, z];
+        case "targetLine":
+          return [a, { f: fa, l: p.sc }, { f: fa, l: p.tc }, z];
+        case "sourceLine":
+          return [a, { f: fb, l: p.sc }, { f: fb, l: p.tc }, z];
+        default:
+          return [
+            a,
+            { f: fa, l: p.sc },
+            { f: fa, l: p.rail },
+            { f: fb, l: p.rail },
+            { f: fb, l: p.tc },
+            z,
+          ];
+      }
+    });
+  const segsCross = (a1: FL, a2: FL, b1: FL, b2: FL): boolean => {
+    const aAlongL = Math.abs(a1.f - a2.f) < 0.01;
+    const bAlongL = Math.abs(b1.f - b2.f) < 0.01;
+    if (aAlongL === bAlongL) return false;
+    const [v1, v2, h1, h2] = aAlongL ? [a1, a2, b1, b2] : [b1, b2, a1, a2];
+    return (
+      v1.f > Math.min(h1.f, h2.f) + 0.5 &&
+      v1.f < Math.max(h1.f, h2.f) - 0.5 &&
+      h1.l > Math.min(v1.l, v2.l) + 0.5 &&
+      h1.l < Math.max(v1.l, v2.l) - 0.5
+    );
+  };
+  const pathCrossings = (pts: FL[]): number => {
+    let n = 0;
+    for (const other of roughPaths) {
+      for (let i = 1; i < pts.length; i++) {
+        for (let j = 1; j < other.length; j++) {
+          if (segsCross(pts[i - 1], pts[i], other[j - 1], other[j])) n++;
+        }
+      }
+    }
+    return n;
+  };
+
+  /** Would claiming this side leave the node's wanted side unusable (taken, or now holding the name)? */
+  const blocksWanted = (n: FLNode, side: Side): boolean => {
+    const wanted = wantedSide.get(n.id);
+    if (!wanted) return false;
+    if (wanted === side) return true;
+    const st = sideState.get(n.id)!;
+    const nameAfter = st.name === side ? other(side) : st.name;
+    return nameAfter === wanted;
+  };
+  /** Rails used by loops already leaving a node, so a later loop can share the trunk. */
+  const loopRails = new Map<string, number[]>();
+
   for (const plan of plans) {
     if (plan.kind !== "back") continue;
     const { s, t, sc, tc } = plan;
     const sfc = fc(s);
     const tfc = fc(t);
     const skip = new Set([s.id, t.id]);
-    const rails = [...new Set([s.rowGutter, t.rowGutter, s.rowGutterUp, t.rowGutterUp])]
+    const rails = [
+      ...new Set([
+        s.rowGutter,
+        t.rowGutter,
+        s.rowGutterUp,
+        t.rowGutterUp,
+        ...(loopRails.get(s.id) ?? []),
+      ]),
+    ]
       .map((rail) => ({ rail, travel: Math.abs(sc - rail) + Math.abs(rail - tc) }))
       // Nearest loop first; below the row before above it when about equal, so
       // a feedback loop reads as a return under the step wherever it can.
@@ -415,46 +519,78 @@ export async function layoutGraph(
       .map(({ rail }) => rail);
     // Side entries that take no wanted side first, then front entries, then
     // the rest; within a rank, nearest rail first.
-    const attempts = [false, true]
+    const ranked = [false, true]
       .flatMap((front) => rails.map((rail, i) => ({ rail, front, i })))
       .map((a) => {
         const exit: Side = a.rail > sc ? "down" : "up";
         const entry: Side = a.rail > tc ? "down" : "up";
-        const conflict =
-          wantedSide.get(s.id) === exit || (!a.front && wantedSide.get(t.id) === entry);
-        return { ...a, rank: (a.front ? 1 : 0) + (conflict ? 2 : 0) };
-      })
-      .sort((a, b) => a.rank - b.rank || a.i - b.i);
-    for (const { rail, front } of attempts) {
+        const conflict = blocksWanted(s, exit) || (!a.front && blocksWanted(t, entry));
+        return { ...a, rank: (conflict ? 2 : 0) + (a.front ? 1 : 0) };
+      });
+    // Candidates that take nobody's wanted side first; among those, fewest
+    // added crossings, then a side entry before a front one, then the nearest rail.
+    type Candidate = (typeof ranked)[number] & {
+      exit: Side;
+      entry: Exit;
+      pts: FL[];
+      crossings: number;
+    };
+    const candidates: Candidate[] = [];
+    for (const a of ranked) {
+      const { rail, front } = a;
       const exit: Side = rail > sc ? "down" : "up";
-      if (Math.abs(rail - sc) <= s.aLHalf + 4 || !canClaim(s, exit)) continue;
+      if (Math.abs(rail - sc) <= s.aLHalf + 4 || !canClaim(s, exit, true)) continue;
       const sEdge = sc + (exit === "down" ? s.aLHalf : -s.aLHalf);
       if (!clearColumn(sfc, sEdge, rail, new Set([s.id]))) continue;
+      let pts: FL[];
+      let entry: Exit;
       if (front) {
-        const [g0, g1] = gapRange(t.layer - 1);
-        const fb = (g0 + g1) / 2;
+        const fb = gapMid(t.layer - 1) + 6;
         if (!clearRun(sfc, fb, rail, skip)) continue;
         if (!clearColumn(fb, rail, tc, skip)) continue;
         if (!clearRun(fb, t.f0 + t.aF0, tc, skip)) continue;
-        claim(s, exit);
-        plan.entry = "front";
-        plan.needB = true;
+        entry = "front";
+        pts = [
+          { f: sfc, l: sEdge },
+          { f: sfc, l: rail },
+          { f: fb, l: rail },
+          { f: fb, l: tc },
+          { f: t.f0 + t.aF0, l: tc },
+        ];
       } else {
-        const entry: Side = rail > tc ? "down" : "up";
+        entry = rail > tc ? "down" : "up";
         if (Math.abs(rail - tc) <= t.aLHalf + 4 || !canClaim(t, entry)) continue;
         const tEdge = tc + (entry === "down" ? t.aLHalf : -t.aLHalf);
         if (!clearColumn(tfc, tEdge, rail, new Set([t.id]))) continue;
         if (!clearRun(sfc, tfc, rail, skip)) continue;
-        claim(s, exit);
-        claim(t, entry);
-        plan.entry = entry;
-        plan.needB = false;
+        pts = [
+          { f: sfc, l: sEdge },
+          { f: sfc, l: rail },
+          { f: tfc, l: rail },
+          { f: tfc, l: tEdge },
+        ];
       }
+      candidates.push({ ...a, exit, entry, pts, crossings: pathCrossings(pts) });
+    }
+    candidates.sort(
+      (a, b) =>
+        (a.rank >= 2 ? 1 : 0) - (b.rank >= 2 ? 1 : 0) ||
+        a.crossings - b.crossings ||
+        (a.rank % 2) - (b.rank % 2) ||
+        a.i - b.i,
+    );
+    const best = candidates[0];
+    if (best) {
+      claim(s, best.exit, true);
+      if (best.entry !== "front") claim(t, best.entry);
       plan.kind = "loop";
-      plan.rail = rail;
-      plan.exit = exit;
+      plan.rail = best.rail;
+      plan.exit = best.exit;
+      plan.entry = best.entry;
       plan.needA = false;
-      break;
+      plan.needB = best.entry === "front";
+      roughPaths.push(best.pts);
+      loopRails.set(s.id, [...(loopRails.get(s.id) ?? []), best.rail]);
     }
     if (plan.kind === "back") {
       plan.rail = bandEnd + BACK_STEP + backIndex * BACK_STEP;
@@ -556,6 +692,8 @@ export async function layoutGraph(
   const crossings = (inner: Seg, outer: Seg) =>
     (within(outer.inL, inner.inL, inner.outL) ? 1 : 0) +
     (within(inner.outL, outer.inL, outer.outL) ? 1 : 0);
+  const LABEL_H = 18;
+  const labelWidth = (text: string) => text.length * 10 * 0.58 + 14;
   const channelF = new Map<string, number>();
   const byGap = new Map<number, Seg[]>();
   for (const sg of segs) byGap.set(sg.gap, [...(byGap.get(sg.gap) ?? []), sg]);
@@ -568,8 +706,26 @@ export async function layoutGraph(
       return bySpan || a.edgeId.localeCompare(b.edgeId);
     });
     const [g0, g1] = gapRange(g);
+    // A pill on a straight run out of the layer before sits at the start of
+    // this gap; the verticals move along so none passes through it.
+    const pill = Math.max(
+      0,
+      ...plans
+        .filter(
+          (p) =>
+            p.e.label &&
+            p.exit === "front" &&
+            (p.kind === "straight" || p.kind === "sourceLine") &&
+            p.s.layer === g,
+        )
+        .map((p) => (orientation === "horizontal" ? labelWidth(p.e.label!) : LABEL_H) + 16),
+    );
+    const reserve = Math.min(pill, Math.max(0, g1 - g0 - 12 * (list.length + 1)));
     list.forEach((sg, i) => {
-      channelF.set(`${sg.edgeId}:${sg.which}`, g0 + ((g1 - g0) * (i + 1)) / (list.length + 1));
+      channelF.set(
+        `${sg.edgeId}:${sg.which}`,
+        g0 + reserve + ((g1 - g0 - reserve) * (i + 1)) / (list.length + 1),
+      );
     });
   }
 
@@ -577,8 +733,6 @@ export async function layoutGraph(
   // along the segment; edges that turn into a channel carry the pill on their
   // own vertical segment, stacked by height so pills from one source never
   // overlap. Pills beside a horizontal run sit just above the line.
-  const LABEL_H = 18;
-  const labelWidth = (text: string) => text.length * 10 * 0.58 + 14;
   const labelled = plans.filter((p) => p.e.label);
   const bySource = new Map<string, EdgePlan[]>();
   for (const p of labelled) bySource.set(p.e.from, [...(bySource.get(p.e.from) ?? []), p]);
@@ -607,6 +761,7 @@ export async function layoutGraph(
     }
     // A loop's pill sits on the return run just past the corner under the
     // source, so the outcome is read beside the decision it leaves.
+    const alongRail = new Map<number, number>();
     for (const p of loops) {
       const w = labelWidth(p.e.label!);
       const sfc = p.s.f0 + (p.s.aF0 + p.s.aF1) / 2;
@@ -614,7 +769,9 @@ export async function layoutGraph(
       const extAlongF = orientation === "horizontal" ? w : LABEL_H;
       const run = Math.abs(tfc - sfc);
       const back = Math.sign(tfc - sfc) || -1;
-      const off = run < extAlongF + 24 ? run / 2 : extAlongF / 2 + 12;
+      const taken = alongRail.get(p.rail) ?? 0;
+      const off = run < extAlongF + 24 ? run / 2 : taken + extAlongF / 2 + 12;
+      alongRail.set(p.rail, taken + extAlongF + 6);
       labelFL.set(p.e.id, { f: sfc + back * off, l: p.rail });
     }
     // Channel-side pills stack away from the source line. The step is the pill's
@@ -743,6 +900,48 @@ export async function layoutGraph(
     nodes: positioned,
     edges,
   };
+}
+
+/**
+ * Ids of the edges that close a cycle. The walk is depth-first over steps
+ * (not nodes) from the starts, then any step not yet reached, in graph order;
+ * a link that reaches a step still on the walk's stack is feedback. Deciding
+ * per step link means every lane copy of a co-owned step treats the same link
+ * as its feedback, and gateway edges inside a step are never reversed.
+ */
+export function backEdges(graph: LayoutGraph): Set<string> {
+  const out = new Map<string, string[]>();
+  const stepOrder: string[] = [];
+  const seenStep = new Set<string>();
+  for (const n of graph.nodes) {
+    if (seenStep.has(n.stepId)) continue;
+    seenStep.add(n.stepId);
+    if (n.pinFirst) stepOrder.unshift(n.stepId);
+    else stepOrder.push(n.stepId);
+  }
+  for (const e of graph.edges) {
+    if (e.sourceStepId === e.targetStepId) continue;
+    const list = out.get(e.sourceStepId) ?? [];
+    if (!list.includes(e.targetStepId)) list.push(e.targetStepId);
+    out.set(e.sourceStepId, list);
+  }
+  const state = new Map<string, "open" | "done">();
+  const backLinks = new Set<string>();
+  const visit = (id: string) => {
+    state.set(id, "open");
+    for (const to of out.get(id) ?? []) {
+      const st = state.get(to);
+      if (st === "open") backLinks.add(`${id}->${to}`);
+      else if (!st) visit(to);
+    }
+    state.set(id, "done");
+  };
+  for (const id of stepOrder) if (!state.has(id)) visit(id);
+  const back = new Set<string>();
+  for (const e of graph.edges) {
+    if (backLinks.has(`${e.sourceStepId}->${e.targetStepId}`)) back.add(e.id);
+  }
+  return back;
 }
 
 function dedupe(pts: Point[]): Point[] {
