@@ -333,7 +333,7 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
 }
 
 /** Colour of an arrow: neutral when every team uses it, else the first team's colour. */
-function edgeColour(ctx: VsdxContext, e: LayoutEdge): { colour: string; teams: string[] } {
+export function edgeColour(ctx: VsdxContext, e: LayoutEdge): { colour: string; teams: string[] } {
   const { teams, process } = ctx;
   if (teams.length === 0) return { colour: NEUTRAL_EDGE, teams: [] };
   const stepById = new Map(process.steps.map((s) => [s.id, s]));

@@ -37,7 +37,7 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
   /** Filename stem: process name, plus the team when one is focused. */
   const stem = `${safeFilename(process.name)}${team ? `-${safeFilename(team.name)}` : ""}`;
 
-  const run = async (kind: "json" | "csv" | "svg" | "png" | "pdf" | "vsdx") => {
+  const run = async (kind: "json" | "csv" | "svg" | "png" | "pdf" | "vsdx" | "xlsx") => {
     setOpen(false);
     setBusy(kind);
     try {
@@ -58,6 +58,12 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
       if (kind === "vsdx") {
         const bytes = buildVsdx({ process, parties, teams, graph, layout, teamLine });
         downloadBlob(vsdxToBlob(bytes), `${stem}-${datestamp()}.vsdx`);
+        return;
+      }
+      if (kind === "xlsx") {
+        const { buildXlsx, xlsxToBlob } = await import("../export/xlsx");
+        const bytes = buildXlsx({ process, parties, teams, graph, layout, teamLine });
+        downloadBlob(xlsxToBlob(bytes), `${stem}-${datestamp()}.xlsx`);
         return;
       }
       const svg = await buildExportSvg({
@@ -120,6 +126,14 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
             onClick={() => run("vsdx")}
           >
             Map as Visio (.vsdx)
+          </button>
+          <button
+            role="menuitem"
+            className="menu-item"
+            title="Excel workbook: lanes as bands of cells, steps and arrows as shapes"
+            onClick={() => run("xlsx")}
+          >
+            Map as Excel (.xlsx)
           </button>
         </div>
       </Popover>

@@ -114,6 +114,14 @@ a static site.
   ids, for sharing and review (CSV is export-only; import takes JSON). Fonts are embedded so exports render the same
   everywhere.
 
+"Map as Excel (.xlsx)" writes a one-sheet workbook for people who want the map
+in Excel: each lane is a band of cells with its title in the party's colour
+(rows for left-to-right flow, columns for top-to-bottom) and the titles are
+frozen so they stay in view; steps, decisions, arrows and outcome labels are
+ordinary Excel shapes at the map's positions. Arrows follow the map's routes
+exactly and are not glued to the steps, because Excel's glued connectors pick
+their own route.
+
 ## Development
 
 ```sh
