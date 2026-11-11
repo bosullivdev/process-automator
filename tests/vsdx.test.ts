@@ -153,6 +153,44 @@ describe("vsdx export", () => {
     expect(yesConnector).toContain('N="LineColor" V="#9ca3af"');
   });
 
+  it("pins each outcome label where the map draws it, upright, on a bent connector too", async () => {
+    const { proc, graph, layout } = await build();
+    const parts = buildVsdxParts({ process: proc, parties: [sales, legal], teams, graph, layout });
+    const pages = parts["visio/pages/pages.xml"];
+    const pageH = Number(/N="PageHeight" V="([\d.]+)"/.exec(pages)![1]);
+    const { doc } = parse(parts["visio/pages/page1.xml"]);
+    const shapes = Array.from(doc.getElementsByTagName("Shape"));
+    const labelled = layout.edges.filter((e) => e.labelAt);
+    expect(labelled.length).toBe(2);
+    // Page inches (y up) -> map px (y down), given one known point: a step's pin.
+    const v = (shape: (typeof shapes)[number], n: string) =>
+      Number(
+        Array.from(shape.getElementsByTagName("Cell"))
+          .find((c) => c.getAttribute("N") === n)!
+          .getAttribute("V"),
+      );
+    for (const route of labelled) {
+      const e = graph.edges.find((x) => x.id === route.id)!;
+      const shape = shapes.find(
+        (s) =>
+          s.getElementsByTagName("Text")[0]?.textContent === e.label &&
+          s.toString().includes("BeginX"),
+      )!;
+      const angle = v(shape, "Angle");
+      const lx = v(shape, "TxtPinX");
+      const ly = v(shape, "TxtPinY") - v(shape, "Height") / 2;
+      // Connector frame -> page.
+      const px = v(shape, "BeginX") + lx * Math.cos(angle) - ly * Math.sin(angle);
+      const py = v(shape, "BeginY") + lx * Math.sin(angle) + ly * Math.cos(angle);
+      // The first route point is the connector's begin point, so offsets from it must match.
+      const p0 = route.points[0];
+      expect((px - v(shape, "BeginX")) * 96).toBeCloseTo(route.labelAt!.x - p0.x, 0);
+      expect((v(shape, "BeginY") - py) * 96).toBeCloseTo(route.labelAt!.y - p0.y, 0);
+      expect(py).toBeLessThan(pageH);
+      expect(v(shape, "TxtAngle")).toBeCloseTo(-angle, 3);
+    }
+  });
+
   it("keeps every shape on the page and the page sized to the map", async () => {
     const { proc, graph, layout } = await build();
     const parts = buildVsdxParts({ process: proc, parties: [sales, legal], teams, graph, layout });

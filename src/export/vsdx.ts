@@ -380,6 +380,26 @@ function connectorShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, nu
     const { colour, teams } = edgeColour(ctx, e);
     const id = c.nextId++;
     const label = e.label ?? "";
+    // The label's text block is pinned where the map draws the pill, in the
+    // connector's own frame, and turned back upright. Without this Visio puts
+    // the text at the middle of the straight line from begin to end, which on
+    // a bent arrow is off the line altogether.
+    let textBlock = "";
+    if (label && route.labelAt) {
+      const at = toPage(c, route.labelAt);
+      const ox = at.x - begin.x;
+      const oy = at.y - begin.y;
+      const tw = (label.length * 8 * 0.58 + 14) / PX;
+      const th = 16 / PX;
+      textBlock =
+        cell("TxtPinX", ox * cos + oy * sin) +
+        cell("TxtPinY", -ox * sin + oy * cos + height / 2) +
+        cell("TxtWidth", tw) +
+        cell("TxtHeight", th) +
+        cell("TxtLocPinX", tw / 2, "TxtWidth*0.5") +
+        cell("TxtLocPinY", th / 2, "TxtHeight*0.5") +
+        cell("TxtAngle", -angle, "-Angle");
+    }
     c.shapes.push(
       `<Shape ID="${id}" Type="Shape" LineStyle="0" FillStyle="0" TextStyle="0">` +
         cell("PinX", (begin.x + end.x) / 2, "(BeginX+EndX)/2") +
@@ -408,6 +428,7 @@ function connectorShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, nu
         cell("EndArrow", 4) +
         cell("EndArrowSize", 1) +
         cell("TextBkgnd", label ? "#ffffff" : "0") +
+        textBlock +
         character(8, TEXT) +
         paragraph(1) +
         `<Section N="Geometry" IX="0">` +
