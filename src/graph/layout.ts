@@ -557,8 +557,22 @@ export async function layoutGraph(
   // An arrow that could turn in either channel takes the one that crosses
   // fewer of the other arrows: a run along the target row when equal, so a
   // fan-out still parts right after its source.
+  //
+  // Outcomes of one decision that carry different labels do not share the
+  // source row, though: two of them running along it together would read as
+  // one arrow until they part, far from the decision. Only one may take it.
+  const onSourceRow = (q: EdgePlan) =>
+    q.exit === "front" && (q.kind === "straight" || q.kind === "sourceLine");
   for (const p of plans) {
     if (!p.flexible) continue;
+    if (
+      p.e.label &&
+      plans.some(
+        (q) => q !== p && q.e.from === p.e.from && q.e.label !== p.e.label && onSourceRow(q),
+      )
+    ) {
+      continue;
+    }
     const viaTarget = pathCrossings(roughPaths.get(p)!, p);
     const viaSource = roughPath(p, "sourceLine");
     if (pathCrossings(viaSource, p) < viaTarget) {
@@ -995,6 +1009,7 @@ export async function layoutGraph(
   const routes = edges.map((r) => ({
     id: r.id,
     sourceId: edgeById.get(r.id)!.from,
+    text: edgeById.get(r.id)!.label,
     points: r.points,
   }));
   const specs: LabelSpec[] = [];
@@ -1003,6 +1018,7 @@ export async function layoutGraph(
     if (!e.label) continue;
     specs.push({
       ...route,
+      text: e.label,
       width: labelWidth(e.label),
       height: LABEL_H,
       tail: e.isDefault ? DEFAULT_TAG_W : 0,

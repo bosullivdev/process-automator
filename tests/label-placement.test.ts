@@ -10,6 +10,7 @@ const none = { shapes: [], names: [] };
 const spec = (id: string, points: Array<[number, number]>, width = 30): LabelSpec => ({
   id,
   sourceId: "d",
+  text: id,
   points: points.map(([x, y]) => ({ x, y })),
   width,
   height: 18,
@@ -79,6 +80,58 @@ describe("placeLabels", () => {
     };
     const placed = placeLabels([a, b], [a, b], none);
     expect(Math.abs(placed.get("a")!.y - placed.get("b")!.y)).toBeGreaterThanOrEqual(18);
+  });
+
+  it("labels one outcome once when it goes to several places", () => {
+    // "Yes" to a step drawn in two lanes: one trunk, then a branch to each copy.
+    const a = {
+      ...spec("a", [
+        [100, 50],
+        [300, 50],
+      ]),
+      text: "Yes",
+    };
+    const b = {
+      ...spec("b", [
+        [100, 50],
+        [160, 50],
+        [160, 200],
+        [300, 200],
+      ]),
+      text: "Yes",
+    };
+    const no = {
+      ...spec("no", [
+        [62, 88],
+        [62, 300],
+      ]),
+      text: "No",
+    };
+    const placed = placeLabels([a, b, no], [a, b, no], none);
+    // One pill, on the shared trunk right by the decision.
+    expect(placed.get("a")).toEqual({ x: 121, y: 50 });
+    expect(placed.get("b")).toEqual(placed.get("a"));
+    expect(placed.get("no")).not.toEqual(placed.get("a"));
+  });
+
+  it("gives a same-text arrow its own label when it does not pass the first one", () => {
+    const a = {
+      ...spec("a", [
+        [100, 50],
+        [300, 50],
+      ]),
+      text: "Yes",
+    };
+    const b = {
+      ...spec("b", [
+        [62, 88],
+        [62, 300],
+      ]),
+      text: "Yes",
+    };
+    const placed = placeLabels([a, b], [a, b], none);
+    expect(placed.get("b")!.x).toBe(62);
+    expect(placed.get("b")).not.toEqual(placed.get("a"));
   });
 
   it("still places a label on an arrow too short to hold it", () => {

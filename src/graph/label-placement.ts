@@ -10,6 +10,11 @@ import type { Point } from "./layout-types";
  * Every label always gets a place. When nothing is clean, the least bad spot
  * is used: crossing a line is better than hiding a name, which is better than
  * covering a step or another label.
+ *
+ * Arrows that leave one node with the same label are a single outcome going
+ * to several places. They are labelled once, on the line they share: each
+ * later arrow whose route passes through the first one's label takes that
+ * same spot, so the map shows one pill instead of a pile of identical ones.
  */
 
 export interface Rect {
@@ -23,10 +28,16 @@ export interface LabelRoute {
   id: string;
   /** Node the arrow leaves; arrows with the same source are sibling outcomes. */
   sourceId: string;
+  /**
+   * The arrow's label, if any. Arrows leaving one node with the same label are
+   * one outcome drawn to several places (a step shared by several lanes).
+   */
+  text?: string;
   points: Point[];
 }
 
 export interface LabelSpec extends LabelRoute {
+  text: string;
   width: number;
   height: number;
   /** Extra room to the right of the pill (the "default" tag). */
@@ -77,7 +88,15 @@ function routeTouches(route: LabelRoute, r: Rect, pad: number): boolean {
   return false;
 }
 
-/** Centre point of each label, keyed by edge id. Labels are placed in the order given. */
+function onRoute(route: LabelRoute, p: Point): boolean {
+  return routeTouches(route, { x0: p.x, y0: p.y, x1: p.x, y1: p.y }, 0.01);
+}
+
+/**
+ * Centre point of each label, keyed by edge id. Labels are placed in the
+ * order given. Two labels may share a point only when they are the same
+ * outcome (same source, same text).
+ */
 export function placeLabels(
   labels: readonly LabelSpec[],
   routes: readonly LabelRoute[],
@@ -86,7 +105,29 @@ export function placeLabels(
   const placed = new Map<string, Point>();
   const taken: Rect[] = [];
 
-  for (const label of labels) {
+  // Within one outcome, the arrow that runs straight on longest goes first:
+  // its first stretch is the shared line with the most room for the pill, so
+  // the arrows that turn off it sooner can share the label.
+  const firstRun = (l: LabelSpec) =>
+    l.points.length < 2
+      ? 0
+      : Math.hypot(l.points[1].x - l.points[0].x, l.points[1].y - l.points[0].y);
+  const groupOf = (l: LabelSpec) => `${l.sourceId}\u0000${l.text}`;
+  const groupOrder = new Map<string, number>();
+  labels.forEach((l, i) => {
+    if (!groupOrder.has(groupOf(l))) groupOrder.set(groupOf(l), i);
+  });
+  const ordered = labels
+    .map((label, i) => ({ label, i }))
+    .sort(
+      (a, b) =>
+        groupOrder.get(groupOf(a.label))! - groupOrder.get(groupOf(b.label))! ||
+        firstRun(b.label) - firstRun(a.label) ||
+        a.i - b.i,
+    )
+    .map(({ label }) => label);
+
+  for (const label of ordered) {
     const pts = label.points;
     if (pts.length < 2) continue;
     const rectAt = (c: Point): Rect => ({
@@ -95,7 +136,18 @@ export function placeLabels(
       x1: c.x + label.width / 2 + label.tail,
       y1: c.y + label.height / 2,
     });
-    const others = routes.filter((r) => r.id !== label.id);
+    const sameOutcome = (r: LabelRoute) => r.sourceId === label.sourceId && r.text === label.text;
+    // The same outcome already labelled on a line this arrow runs along.
+    const shared = labels
+      .filter((l) => l.id !== label.id && sameOutcome(l) && placed.has(l.id))
+      .map((l) => placed.get(l.id)!)
+      .find((at) => onRoute(label, at));
+    if (shared) {
+      placed.set(label.id, shared);
+      continue;
+    }
+    // Lines of the same outcome are not rivals: the label may sit on them.
+    const others = routes.filter((r) => r.id !== label.id && !sameOutcome(r));
     const cost = (c: Point): number => {
       const r = rectAt(c);
       let total = 0;
