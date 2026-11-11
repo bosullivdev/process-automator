@@ -69,6 +69,7 @@ const viewSchema = z.object({
   highlightTeamId: z.string().nullable().default(null),
   teamFocus: z.enum(["highlight", "isolate"]).default("highlight"),
   tableHidden: z.boolean().optional(),
+  pinLanes: z.boolean().optional(),
 });
 
 export const workspaceV1Schema = z.object({

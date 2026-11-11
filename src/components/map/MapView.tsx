@@ -26,6 +26,8 @@ interface Props {
   updating: boolean;
   mode: "simple" | "bpmn";
   annotations: "full" | "minimal";
+  /** Keep each lane's title band at the leading edge of the view while the map is panned. */
+  pinLanes?: boolean;
   selectedStepId: string | null;
   flags: Map<string, Flag[]>;
   onSelect: (stepId: string | null) => void;
@@ -42,6 +44,7 @@ export function MapView({
   updating,
   mode,
   annotations,
+  pinLanes = false,
   selectedStepId,
   flags,
   onSelect,
@@ -576,6 +579,77 @@ export function MapView({
             );
           })}
         </g>
+        {/*
+          Pinned lane titles. A second top-level group, drawn over the map, so
+          steps and arrows slide underneath it; exports take the first group
+          only and are unaffected. Each band sits at the leading edge of the
+          view once its own title has scrolled off, and stops at the far end of
+          its lane.
+        */}
+        {pinLanes && layout && (
+          <g
+            data-pinned-lanes
+            transform={`translate(${t.x}, ${t.y}) scale(${t.k})`}
+            style={{ pointerEvents: "none" }}
+          >
+            {layout.lanes.map((lane) => {
+              const horizontal = layout.orientation === "horizontal";
+              const h = lane.header;
+              // Leading edge of the view in map coordinates.
+              const edge = horizontal ? -t.x / t.k : -t.y / t.k;
+              const home = horizontal ? h.x : h.y;
+              if (edge <= home) return null;
+              const far = horizontal
+                ? lane.x + lane.width - h.width
+                : lane.y + lane.height - h.height;
+              const at = Math.min(edge, far);
+              const x = horizontal ? at : h.x;
+              const y = horizontal ? h.y : at;
+              const cx = x + h.width / 2;
+              const cy = y + h.height / 2;
+              const c = laneColour(lane.id);
+              return (
+                <g key={lane.id} data-pinned-lane={lane.id}>
+                  <rect x={x} y={y} width={h.width} height={h.height} fill="var(--bg)" />
+                  <rect x={x} y={y} width={h.width} height={h.height} fill={c.fill} />
+                  {c.pattern !== "none" && (
+                    <rect
+                      x={x}
+                      y={y}
+                      width={h.width}
+                      height={h.height}
+                      fill={c.pattern === "stripe" ? "url(#lane-stripe)" : "url(#lane-dot)"}
+                    />
+                  )}
+                  <line
+                    x1={horizontal ? x : x + h.width}
+                    y1={horizontal ? y + h.height : y}
+                    x2={x + h.width}
+                    y2={y + h.height}
+                    stroke="var(--border)"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={cx}
+                    y={cy}
+                    transform={horizontal ? `rotate(-90 ${cx} ${cy})` : undefined}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={12}
+                    fontWeight={600}
+                    fill={c.text}
+                  >
+                    {h.lines.map((line, li) => (
+                      <tspan key={li} x={cx} y={cy + (li - (h.lines.length - 1) / 2) * 14}>
+                        {line}
+                      </tspan>
+                    ))}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        )}
       </svg>
       {empty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-[var(--text-muted)]">

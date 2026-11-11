@@ -155,6 +155,7 @@ export default function App() {
       updating={updating}
       mode={view.shapeMode}
       annotations={view.annotations}
+      pinLanes={!!view.pinLanes}
       selectedStepId={selectedStepId}
       flags={flagMap}
       onSelect={selectStep}
@@ -203,6 +204,14 @@ export default function App() {
           onClick={() => setView({ annotations: view.annotations === "full" ? "minimal" : "full" })}
         >
           {view.annotations === "full" ? "Details" : "Minimal"}
+        </button>
+        <button
+          className={`btn ${view.pinLanes ? "btn-active" : ""}`}
+          aria-pressed={!!view.pinLanes}
+          title="Keep the lane titles in view while moving around the map"
+          onClick={() => setView({ pinLanes: !view.pinLanes })}
+        >
+          Pin lanes
         </button>
         <span
           className="flex items-center gap-1 text-xs text-[var(--text-muted)]"

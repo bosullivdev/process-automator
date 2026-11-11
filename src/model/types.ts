@@ -92,4 +92,6 @@ export interface ViewSettings {
   teamFocus: "highlight" | "isolate";
   /** The table pane is tucked away so the map fills the window (wide screens only). */
   tableHidden?: boolean;
+  /** Lane titles stay at the edge of the map while it is panned, like frozen spreadsheet headers. */
+  pinLanes?: boolean;
 }

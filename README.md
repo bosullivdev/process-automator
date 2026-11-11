@@ -12,7 +12,10 @@ a static site.
 
 - **Table (left)**: one row per step. The small arrow at the top of the divider
   (or Ctrl/Cmd+\) hides the table so the map fills the window, and brings it
-  back; the choice is remembered. Columns: No, Name, Owner, Type, Next,
+  back; the choice is remembered. "Pin lanes" in the header keeps each lane's
+  title at the edge of the map while you pan (left edge for left-to-right
+  flow, top edge for top-to-bottom), which helps when walking people through
+  a wide process; exports are unaffected. Columns: No, Name, Owner, Type, Next,
   Technology, Control, Contributors, Notes. Row order has no meaning; flow is
   defined by the Next column. Tick Control on a step that involves a control
   and type its reference from your controls document; the map shows a
