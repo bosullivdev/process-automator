@@ -90,10 +90,10 @@ test("build a process end to end", async ({ page }) => {
   await expect(map.getByRole("button", { name: /Lane Finance/ })).toBeVisible();
   for (const label of ["Refund", "Reject", "Escalate"]) {
     await expect(
-      map.locator("[data-edge-id] text").filter({ hasText: new RegExp(`^${label}$`) }),
+      map.locator("[data-edge-label] text").filter({ hasText: new RegExp(`^${label}$`) }),
     ).toHaveCount(1);
   }
-  await expect(map.locator("[data-edge-id] text").filter({ hasText: "default" })).toHaveCount(1);
+  await expect(map.locator("[data-edge-label] text").filter({ hasText: "default" })).toHaveCount(1);
 
   // Flip orientation: lanes go side by side.
   await page.getByRole("button", { name: "Toggle orientation" }).click();

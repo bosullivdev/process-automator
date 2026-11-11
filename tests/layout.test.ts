@@ -495,10 +495,10 @@ describe("feedback loops", () => {
     const lane = r.lanes[0];
     expect(p1.y).toBeLessThan(lane.y + lane.height);
     expect(r.height).toBeLessThanOrEqual(lane.y + lane.height + 8);
-    // The "No" pill sits on the return run, just left of the corner under the diamond.
-    expect(no.labelAt!.y).toBe(p1.y);
-    expect(no.labelAt!.x).toBeLessThan(q.cx);
-    expect(no.labelAt!.x).toBeGreaterThan(rv.cx);
+    // The "No" pill sits on the loop right under the diamond it leaves.
+    expect(no.labelAt!.x).toBeCloseTo(q.cx);
+    expect(no.labelAt!.y).toBeGreaterThan(q.bottom);
+    expect(no.labelAt!.y).toBeLessThan(p1.y);
     // The decision's name moves above the diamond, out of the loop's way.
     expect(r.nodes.find((n) => n.id === "q")!.labelSide).toBe("above");
     // The forward "Yes" still leaves the front of the diamond.

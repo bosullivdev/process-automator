@@ -9,6 +9,7 @@ import type {
   PositionedNode,
   RoutedEdge,
 } from "./layout-types";
+import { placeLabels, type LabelSpec, type Rect } from "./label-placement";
 import { measureText, wrapToWidth } from "./text-metrics";
 
 /*
@@ -34,11 +35,16 @@ const HEADER_PAD_F = 11; // band padding either side of the lines (one line = 36
 const HEADER_PAD_L = 12; // padding at both ends of the lane
 const HEADER_MAX_LINES = 3;
 const MARGIN_F = 48; // space between header and first column (also a channel for back-edges into layer 0)
-const GAP_F = 64; // gap between layer columns
+const GAP_F = 64; // gap between layer columns (wider where an outcome label needs the room)
+const GAP_F_MAX = 220;
 const GAP_L = 28; // gap between rows inside a lane
 const LANE_PAD = 26; // lane padding on the lane axis
 const BACK_STEP = 16; // spacing between stacked back-edge rails below the band
 const END_MARGIN_F = 48; // space after the last column (channel for back-edges out of the last layer)
+const LABEL_H = 18;
+const DEFAULT_TAG_W = 40; // the "default" tag drawn to the right of a pill
+const NAME_GAP = 4; // between a shape and the name block drawn outside it
+const labelWidth = (text: string) => text.length * 10 * 0.58 + 14;
 
 interface FLNode {
   id: string;
@@ -276,7 +282,43 @@ export async function layoutGraph(
   // Header band thickness: enough for the most lines any lane needs, one line at least.
   const HEADER =
     Math.max(1, ...lanes.map((ln) => ln.lines.length)) * HEADER_LINE_H + HEADER_PAD_F * 2;
-  const colStart = (k: number) => HEADER + MARGIN_F + k * (NODE_F + GAP_F);
+  // The gap after a layer is wide enough to carry the outcome labels of the
+  // decisions in that layer on a run of their own arrow.
+  const gapWidth: number[] = Array.from({ length: Math.max(0, layerCount - 1) }, () => GAP_F);
+  const labelRoom = gapWidth.map(() => 0);
+  const turns = gapWidth.map(() => 0);
+  for (const e of graph.edges) {
+    if (!e.label || reversed.has(e.id)) continue;
+    const s = nodes.get(e.from);
+    const t = nodes.get(e.to);
+    if (!s || !t || t.layer <= s.layer) continue;
+    const alongF =
+      orientation === "horizontal"
+        ? labelWidth(e.label) + (e.isDefault ? DEFAULT_TAG_W : 0)
+        : LABEL_H;
+    labelRoom[s.layer] = Math.max(labelRoom[s.layer], alongF + 20);
+  }
+  // Arrows that change row turn in a gap; each needs its own vertical there.
+  for (const e of graph.edges) {
+    if (reversed.has(e.id)) continue;
+    const s = nodes.get(e.from);
+    const t = nodes.get(e.to);
+    if (!s || !t || t.layer <= s.layer) continue;
+    if (Math.abs(s.l0 + s.aL - (t.l0 + t.aL)) < 0.5) continue;
+    turns[s.layer]++;
+    if (t.layer - 1 !== s.layer) turns[t.layer - 1]++;
+  }
+  gapWidth.forEach((_, g) => {
+    if (labelRoom[g] > 0) {
+      gapWidth[g] = Math.min(GAP_F_MAX, Math.max(GAP_F, labelRoom[g] + 12 * (turns[g] + 1)));
+    }
+  });
+  const colStarts: number[] = [];
+  for (let k = 0, f = HEADER + MARGIN_F; k < layerCount; k++) {
+    colStarts.push(f);
+    f += NODE_F + (gapWidth[k] ?? 0);
+  }
+  const colStart = (k: number) => colStarts[k];
   for (const n of nodes.values()) {
     n.f0 = colStart(n.layer) + (NODE_F - n.fExtent) / 2;
     n.f1 = n.f0 + n.fExtent;
@@ -289,7 +331,7 @@ export async function layoutGraph(
     if (g < 0) return [HEADER + 6, HEADER + MARGIN_F - 6];
     const start = colStart(g) + NODE_F;
     if (g >= layerCount - 1) return [start + 6, start + END_MARGIN_F - 6];
-    return [start, start + GAP_F];
+    return [start, start + gapWidth[g]];
   };
   const COLLIDE_MARGIN = 8;
   /** True when a horizontal run at lane-coordinate l between f0 and f1 touches no node (other than skip). */
@@ -763,8 +805,6 @@ export async function layoutGraph(
   const crossings = (inner: Seg, outer: Seg) =>
     (within(outer.inL, inner.inL, inner.outL) ? 1 : 0) +
     (within(inner.outL, outer.inL, outer.outL) ? 1 : 0);
-  const LABEL_H = 18;
-  const labelWidth = (text: string) => text.length * 10 * 0.58 + 14;
   const channelF = new Map<string, number>();
   const byGap = new Map<number, Seg[]>();
   for (const sg of segs) byGap.set(sg.gap, [...(byGap.get(sg.gap) ?? []), sg]);
@@ -777,8 +817,9 @@ export async function layoutGraph(
       return bySpan || a.edgeId.localeCompare(b.edgeId);
     });
     const [g0, g1] = gapRange(g);
-    // A pill on a straight run out of the layer before sits at the start of
-    // this gap; the verticals move along so none passes through it.
+    // An outcome label sits on its own arrow past the point where the other
+    // outcomes turn off and before arrows from elsewhere join it, so room for
+    // the pill is kept between the leaving verticals and the arriving ones.
     const pill = Math.max(
       0,
       ...plans
@@ -786,82 +827,24 @@ export async function layoutGraph(
           (p) =>
             p.e.label &&
             p.exit === "front" &&
-            (p.kind === "straight" || p.kind === "sourceLine") &&
+            p.kind !== "loop" &&
+            p.kind !== "back" &&
             p.s.layer === g,
         )
-        .map((p) => (orientation === "horizontal" ? labelWidth(p.e.label!) : LABEL_H) + 16),
+        .map(
+          (p) =>
+            (orientation === "horizontal"
+              ? labelWidth(p.e.label!) + (p.e.isDefault ? DEFAULT_TAG_W : 0)
+              : LABEL_H) + 20,
+        ),
     );
     const reserve = Math.min(pill, Math.max(0, g1 - g0 - 12 * (list.length + 1)));
     list.forEach((sg, i) => {
       channelF.set(
         `${sg.edgeId}:${sg.which}`,
-        g0 + reserve + ((g1 - g0 - reserve) * (i + 1)) / (list.length + 1),
+        g0 + ((g1 - g0 - reserve) * (i + 1)) / (list.length + 1) + (sg.which === "b" ? reserve : 0),
       );
     });
-  }
-
-  // Labels. Edges whose first segment is long carry the pill on it, stacked
-  // along the segment; edges that turn into a channel carry the pill on their
-  // own vertical segment, stacked by height so pills from one source never
-  // overlap. Pills beside a horizontal run sit just above the line.
-  const labelled = plans.filter((p) => p.e.label);
-  const bySource = new Map<string, EdgePlan[]>();
-  for (const p of labelled) bySource.set(p.e.from, [...(bySource.get(p.e.from) ?? []), p]);
-  const labelFL = new Map<string, { f: number; l: number }>();
-  for (const group of bySource.values()) {
-    const horizontal = group.filter(
-      (p) => p.exit === "front" && (p.kind === "straight" || p.kind === "sourceLine"),
-    );
-    const loops = group.filter((p) => p.kind === "loop");
-    const side = group.filter((p) => p.exit !== "front" && p.kind !== "loop");
-    const vertical = group.filter(
-      (p) => !horizontal.includes(p) && !side.includes(p) && !loops.includes(p),
-    );
-    let along = 8;
-    for (const p of horizontal) {
-      const w = labelWidth(p.e.label!);
-      labelFL.set(p.e.id, { f: p.s.f0 + p.s.aF1 + along + w / 2, l: p.sc });
-      along += w + 8;
-    }
-    for (const p of side) {
-      const w = labelWidth(p.e.label!);
-      const sfc = p.s.f0 + (p.s.aF0 + p.s.aF1) / 2;
-      const ext = orientation === "horizontal" ? LABEL_H : w;
-      const off = p.s.aLHalf + 8 + ext / 2;
-      labelFL.set(p.e.id, { f: sfc, l: p.sc + (p.exit === "down" ? off : -off) });
-    }
-    // A loop's pill sits on the return run just past the corner under the
-    // source, so the outcome is read beside the decision it leaves.
-    const alongRail = new Map<number, number>();
-    for (const p of loops) {
-      const w = labelWidth(p.e.label!);
-      const sfc = p.s.f0 + (p.s.aF0 + p.s.aF1) / 2;
-      const tfc = p.t.f0 + (p.t.aF0 + p.t.aF1) / 2;
-      const extAlongF = orientation === "horizontal" ? w : LABEL_H;
-      const run = Math.abs(tfc - sfc);
-      const back = Math.sign(tfc - sfc) || -1;
-      const taken = alongRail.get(p.rail) ?? 0;
-      const off = run < extAlongF + 24 ? run / 2 : taken + extAlongF / 2 + 12;
-      alongRail.set(p.rail, taken + extAlongF + 6);
-      labelFL.set(p.e.id, { f: sfc + back * off, l: p.rail });
-    }
-    // Channel-side pills stack away from the source line. The step is the pill's
-    // extent along the lane axis: its height when lanes stack vertically, its
-    // width when lanes sit side by side (vertical flow).
-    const extentAlongL = (w: number) => (orientation === "horizontal" ? LABEL_H : w);
-    const stacks = { up: 0, down: 0 };
-    for (const p of vertical) {
-      const w = labelWidth(p.e.label!);
-      const fa = channelF.get(`${p.e.id}:a`) ?? p.s.f0 + p.s.aF1 + 12;
-      const goal = p.kind === "targetLine" ? p.tc : p.rail;
-      const dir = goal >= p.sc ? "down" : "up";
-      const ext = extentAlongL(w);
-      const want = 16 + stacks[dir] + ext / 2;
-      stacks[dir] += ext + 6;
-      const span = Math.abs(goal - p.sc);
-      const h = Math.min(want, Math.max(span / 2, 10));
-      labelFL.set(p.e.id, { f: fa, l: p.sc + (dir === "down" ? h : -h) });
-    }
   }
 
   const edges: RoutedEdge[] = [];
@@ -898,10 +881,7 @@ export async function layoutGraph(
           toXY(tf0, tc),
         );
       }
-      const routed: RoutedEdge = { id: e.id, points: dedupe(pts) };
-      const lab = labelFL.get(e.id);
-      if (lab) routed.labelAt = toXY(lab.f, lab.l);
-      edges.push(routed);
+      edges.push({ id: e.id, points: dedupe(pts) });
       continue;
     }
     switch (p.kind) {
@@ -924,10 +904,7 @@ export async function layoutGraph(
           toXY(tf0, tc),
         );
     }
-    const routed: RoutedEdge = { id: e.id, points: dedupe(pts) };
-    const lab = labelFL.get(e.id);
-    if (lab) routed.labelAt = toXY(lab.f, lab.l);
-    edges.push(routed);
+    edges.push({ id: e.id, points: dedupe(pts) });
   }
 
   const backRails = backIndex;
@@ -962,7 +939,87 @@ export async function layoutGraph(
     };
   });
 
+  // ---- 4. Outcome labels, placed against the finished picture: every shape,
+  // every name drawn outside a shape, and every routed arrow.
+  const shapes: Rect[] = [];
+  const names: Rect[] = [];
+  graph.nodes.forEach((n, i) => {
+    const at = positioned[i];
+    const cx = at.x + n.cx;
+    const cy = at.y + n.cy;
+    const shape: Rect = {
+      x0: cx - n.shapeWidth / 2,
+      y0: cy - n.shapeHeight / 2,
+      x1: cx + n.shapeWidth / 2,
+      y1: cy + n.shapeHeight / 2,
+    };
+    shapes.push(shape);
+    const { labelWidth: w, labelHeight: h } = n.text;
+    if (h <= 0 || w <= 0) return;
+    switch (at.labelSide) {
+      case "below":
+        names.push({
+          x0: cx - w / 2,
+          x1: cx + w / 2,
+          y0: shape.y1 + NAME_GAP,
+          y1: shape.y1 + NAME_GAP + h,
+        });
+        break;
+      case "above":
+        names.push({
+          x0: cx - w / 2,
+          x1: cx + w / 2,
+          y0: shape.y0 - NAME_GAP - h,
+          y1: shape.y0 - NAME_GAP,
+        });
+        break;
+      case "right":
+        names.push({
+          x0: shape.x1 + NAME_GAP,
+          x1: shape.x1 + NAME_GAP + w,
+          y0: cy - h / 2,
+          y1: cy + h / 2,
+        });
+        break;
+      case "left":
+        names.push({
+          x0: shape.x0 - NAME_GAP - w,
+          x1: shape.x0 - NAME_GAP,
+          y0: cy - h / 2,
+          y1: cy + h / 2,
+        });
+        break;
+    }
+  });
+  const edgeById = new Map(graph.edges.map((e) => [e.id, e]));
+  const routes = edges.map((r) => ({
+    id: r.id,
+    sourceId: edgeById.get(r.id)!.from,
+    points: r.points,
+  }));
+  const specs: LabelSpec[] = [];
+  for (const route of routes) {
+    const e = edgeById.get(route.id)!;
+    if (!e.label) continue;
+    specs.push({
+      ...route,
+      width: labelWidth(e.label),
+      height: LABEL_H,
+      tail: e.isDefault ? DEFAULT_TAG_W : 0,
+    });
+  }
+  const labelAt = placeLabels(specs, routes, { shapes, names });
   const total = toXY(fEnd, lEnd);
+  for (const routed of edges) {
+    const at = labelAt.get(routed.id);
+    if (!at) continue;
+    routed.labelAt = at;
+    // A pill on an outer rail may reach past the band; the canvas grows to hold it.
+    const spec = specs.find((sp) => sp.id === routed.id)!;
+    total.x = Math.max(total.x, at.x + spec.width / 2 + spec.tail + 8);
+    total.y = Math.max(total.y, at.y + spec.height / 2 + 8);
+  }
+
   return {
     width: total.x,
     height: total.y,

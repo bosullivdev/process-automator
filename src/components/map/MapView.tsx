@@ -501,27 +501,30 @@ export function MapView({
               </g>
             );
           })}
-          {layout?.edges.map((route) => {
-            const e = edgeById.get(route.id);
-            if (!e) return null;
-            const selected =
-              !!selectedStepId &&
-              (e.sourceStepId === selectedStepId || e.targetStepId === selectedStepId);
-            const dimmed = edgeDimmed(e);
-            const style = edgeStyle(e, selected, dimmed);
-            return (
-              <MapEdge
-                key={route.id}
-                edge={e}
-                route={route}
-                selected={selected}
-                mode={mode}
-                dimmed={dimmed}
-                lines={style.lines}
-                width={style.width}
-              />
-            );
-          })}
+          {(["line", "label"] as const).map((part) =>
+            layout?.edges.map((route) => {
+              const e = edgeById.get(route.id);
+              if (!e) return null;
+              const selected =
+                !!selectedStepId &&
+                (e.sourceStepId === selectedStepId || e.targetStepId === selectedStepId);
+              const dimmed = edgeDimmed(e);
+              const style = edgeStyle(e, selected, dimmed);
+              return (
+                <MapEdge
+                  key={`${part}:${route.id}`}
+                  edge={e}
+                  route={route}
+                  selected={selected}
+                  mode={mode}
+                  dimmed={dimmed}
+                  lines={style.lines}
+                  width={style.width}
+                  part={part}
+                />
+              );
+            }),
+          )}
           {layout?.nodes.map((n) => {
             const ln = nodeKind.get(n.id);
             if (!ln) return null;
