@@ -554,6 +554,49 @@ export async function layoutGraph(
     return n;
   };
 
+  /*
+   * How many unrelated arrows (a different source step and a different target
+   * step) a path would run along, on the same line. Two such arrows drawn end
+   * to end read as one arrow, joining steps that have no link between them.
+   */
+  const sharedRuns = (pts: FL[], self: EdgePlan): number => {
+    let n = 0;
+    for (const [q, other] of roughPaths) {
+      if (q === self) continue;
+      if (q.e.sourceStepId === self.e.sourceStepId || q.e.targetStepId === self.e.targetStepId) {
+        continue;
+      }
+      let shared = false;
+      for (let i = 1; i < pts.length && !shared; i++) {
+        for (let j = 1; j < other.length && !shared; j++) {
+          const [a1, a2, b1, b2] = [pts[i - 1], pts[i], other[j - 1], other[j]];
+          const aAlongF = Math.abs(a1.l - a2.l) < 0.01;
+          const bAlongF = Math.abs(b1.l - b2.l) < 0.01;
+          if (aAlongF !== bAlongF) continue;
+          const sameLine = aAlongF ? Math.abs(a1.l - b1.l) < 1.5 : Math.abs(a1.f - b1.f) < 1.5;
+          if (!sameLine) continue;
+          const [a0, a9, b0, b9] = aAlongF
+            ? [
+                Math.min(a1.f, a2.f),
+                Math.max(a1.f, a2.f),
+                Math.min(b1.f, b2.f),
+                Math.max(b1.f, b2.f),
+              ]
+            : [
+                Math.min(a1.l, a2.l),
+                Math.max(a1.l, a2.l),
+                Math.min(b1.l, b2.l),
+                Math.max(b1.l, b2.l),
+              ];
+          // Overlapping, or close enough end to end to read as one line.
+          if (Math.min(a9, b9) - Math.max(a0, b0) > -GAP_F) shared = true;
+        }
+      }
+      if (shared) n++;
+    }
+    return n;
+  };
+
   // An arrow that could turn in either channel takes the one that crosses
   // fewer of the other arrows: a run along the target row when equal, so a
   // fan-out still parts right after its source.
@@ -563,23 +606,31 @@ export async function layoutGraph(
   // one arrow until they part, far from the decision. Only one may take it.
   const onSourceRow = (q: EdgePlan) =>
     q.exit === "front" && (q.kind === "straight" || q.kind === "sourceLine");
-  for (const p of plans) {
-    if (!p.flexible) continue;
-    if (
-      p.e.label &&
-      plans.some(
-        (q) => q !== p && q.e.from === p.e.from && q.e.label !== p.e.label && onSourceRow(q),
-      )
-    ) {
-      continue;
-    }
-    const viaTarget = pathCrossings(roughPaths.get(p)!, p);
-    const viaSource = roughPath(p, "sourceLine");
-    if (pathCrossings(viaSource, p) < viaTarget) {
-      p.kind = "sourceLine";
-      p.needA = false;
-      p.needB = true;
-      roughPaths.set(p, viaSource);
+  // Each choice depends on where the other arrows run, so the choices are
+  // revisited until none changes (a few rounds at most).
+  for (let round = 0, changed = true; changed && round < 4; round++) {
+    changed = false;
+    for (const p of plans) {
+      if (!p.flexible) continue;
+      const barred =
+        !!p.e.label &&
+        plans.some(
+          (q) => q !== p && q.e.from === p.e.from && q.e.label !== p.e.label && onSourceRow(q),
+        );
+      const viaTarget = roughPath(p, "targetLine");
+      const viaSource = roughPath(p, "sourceLine");
+      // Never run along a line an unrelated arrow already uses if the other
+      // channel avoids it; after that, fewer crossings wins.
+      const better =
+        sharedRuns(viaSource, p) - sharedRuns(viaTarget, p) ||
+        pathCrossings(viaSource, p) - pathCrossings(viaTarget, p);
+      const kind: PlanKind = !barred && better < 0 ? "sourceLine" : "targetLine";
+      if (kind === p.kind) continue;
+      changed = true;
+      p.kind = kind;
+      p.needA = kind === "targetLine";
+      p.needB = kind === "sourceLine";
+      roughPaths.set(p, kind === "sourceLine" ? viaSource : viaTarget);
     }
   }
 

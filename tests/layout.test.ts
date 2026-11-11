@@ -787,3 +787,72 @@ describe("lane headers", () => {
     expect(la.header.width).toBe(la.width);
   });
 });
+
+describe("unrelated arrows", () => {
+  it("never run along one line, so a fan-out and the returns from it do not read as a direct link", async () => {
+    // A decision in the first lane sends each outcome to an approver in another
+    // lane; every approver hands back to one step in the decision's own row.
+    const req = party("Requester", 0);
+    const lanes = [party("Admin", 1), party("Manager", 2), party("Head", 3), party("Council", 4)];
+    const proc = process(
+      [
+        step({ id: "s", displayNo: 1, type: "start", ownerId: req.id, next: [{ targetId: "d" }] }),
+        step({
+          id: "d",
+          displayNo: 2,
+          type: "decision",
+          ownerId: req.id,
+          next: [
+            { targetId: "a1", label: "5k-25k" },
+            { targetId: "a0", label: "<5k" },
+            { targetId: "a2", label: "75k-250k" },
+            { targetId: "a3", label: "250k+" },
+          ],
+        }),
+        step({ id: "a0", displayNo: 3, ownerId: lanes[0].id, next: [{ targetId: "r" }] }),
+        step({ id: "a1", displayNo: 4, ownerId: lanes[1].id, next: [{ targetId: "r" }] }),
+        step({ id: "a2", displayNo: 5, ownerId: lanes[2].id, next: [{ targetId: "r" }] }),
+        step({ id: "a3", displayNo: 6, ownerId: lanes[3].id, next: [{ targetId: "a4" }] }),
+        step({ id: "a4", displayNo: 7, ownerId: lanes[3].id, next: [{ targetId: "r" }] }),
+        step({ id: "r", displayNo: 8, ownerId: req.id, next: [{ targetId: "e" }] }),
+        step({ id: "e", displayNo: 9, type: "end", ownerId: req.id }),
+      ],
+      { laneOrder: [req.id, ...lanes.map((l) => l.id)] },
+    );
+    for (const orientation of ["horizontal", "vertical"] as const) {
+      const graph = buildLayoutGraph(proc, [req, ...lanes], "simple", orientation);
+      const r = await layoutGraph(graph, orientation, elk);
+      for (let i = 0; i < r.edges.length; i++) {
+        for (let j = i + 1; j < r.edges.length; j++) {
+          const a = graph.edges.find((e) => e.id === r.edges[i].id)!;
+          const b = graph.edges.find((e) => e.id === r.edges[j].id)!;
+          if (a.from === b.from || a.to === b.to) continue;
+          const pa = r.edges[i].points;
+          const pb = r.edges[j].points;
+          for (let k = 1; k < pa.length; k++) {
+            for (let m = 1; m < pb.length; m++) {
+              const [a0, a1, b0, b1] = [pa[k - 1], pa[k], pb[m - 1], pb[m]];
+              const aH = Math.abs(a0.y - a1.y) < 0.01;
+              const bH = Math.abs(b0.y - b1.y) < 0.01;
+              if (aH !== bH) continue;
+              const sameLine = aH ? Math.abs(a0.y - b0.y) < 1.5 : Math.abs(a0.x - b0.x) < 1.5;
+              if (!sameLine) continue;
+              const [lo, hi] = aH
+                ? [
+                    Math.max(Math.min(a0.x, a1.x), Math.min(b0.x, b1.x)),
+                    Math.min(Math.max(a0.x, a1.x), Math.max(b0.x, b1.x)),
+                  ]
+                : [
+                    Math.max(Math.min(a0.y, a1.y), Math.min(b0.y, b1.y)),
+                    Math.min(Math.max(a0.y, a1.y), Math.max(b0.y, b1.y)),
+                  ];
+              expect(hi - lo, `${orientation}: ${a.id} and ${b.id} share a line`).toBeLessThan(
+                -1.5,
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+});
