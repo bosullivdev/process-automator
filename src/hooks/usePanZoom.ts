@@ -8,6 +8,8 @@ export interface Transform {
 
 const MIN_K = 0.1;
 const MAX_K = 4;
+/** Largest wheel delta counted per event when zooming: one notch zooms by about 16%. */
+const WHEEL_ZOOM_CAP = 15;
 
 export function usePanZoom(containerRef: React.RefObject<HTMLElement | null>) {
   const [t, setT] = useState<Transform>({ x: 24, y: 24, k: 1 });
@@ -23,19 +25,34 @@ export function usePanZoom(containerRef: React.RefObject<HTMLElement | null>) {
     });
   }, []);
 
+  /**
+   * Wheel pans; Ctrl/Cmd+wheel (and a trackpad pinch, which browsers report
+   * the same way) zooms about the pointer. Takes the native event: it must be
+   * attached with `passive: false`, because React's own wheel listener is
+   * passive and cannot stop the browser zooming the whole page.
+   */
   const onWheel = useCallback(
-    (e: React.WheelEvent) => {
+    (e: WheelEvent) => {
+      const el = containerRef.current;
+      if (!el) return;
       e.preventDefault();
-      const rect = e.currentTarget.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
+      // Lines or pages (some mice) to pixels.
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+      const dx = e.deltaX * unit;
+      const dy = e.deltaY * unit;
       if (e.ctrlKey || e.metaKey) {
-        zoomAt(Math.exp(-e.deltaY * 0.01), cx, cy);
+        // A mouse wheel notch is about 100 px and a pinch sends a stream of
+        // small deltas; capping each event keeps one notch to a gentle step.
+        const step = Math.max(-WHEEL_ZOOM_CAP, Math.min(WHEEL_ZOOM_CAP, dy));
+        zoomAt(Math.exp(-step * 0.01), cx, cy);
       } else {
-        setT((prev) => ({ ...prev, x: prev.x - e.deltaX, y: prev.y - e.deltaY }));
+        setT((prev) => ({ ...prev, x: prev.x - dx, y: prev.y - dy }));
       }
     },
-    [zoomAt],
+    [containerRef, zoomAt],
   );
 
   const onPointerDown = useCallback(

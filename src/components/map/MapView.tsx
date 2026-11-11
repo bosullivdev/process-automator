@@ -50,7 +50,7 @@ export function MapView({
   const theme = useResolvedTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const pz = usePanZoom(containerRef);
-  const { t, fit, reveal } = pz;
+  const { t, fit, reveal, onWheel } = pz;
   const fittedFor = useRef<string | null>(null);
   const selectionFromMap = useRef(false);
 
@@ -70,6 +70,17 @@ export function MapView({
   // Keep the whole map in view after each layout until the user pans or zooms;
   // switching process or orientation starts afresh.
   const userAdjusted = useRef(false);
+  // Wheel over the map pans it and Ctrl/Cmd+wheel zooms it, never the page.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handle = (e: WheelEvent) => {
+      userAdjusted.current = true;
+      onWheel(e);
+    };
+    el.addEventListener("wheel", handle, { passive: false });
+    return () => el.removeEventListener("wheel", handle);
+  }, [onWheel]);
   useEffect(() => {
     if (!layout || layout.width === 0) return;
     const key = `${process.id}:${layout.orientation}`;
@@ -228,10 +239,6 @@ export function MapView({
     >
       <svg
         className="h-full w-full"
-        onWheel={(e) => {
-          userAdjusted.current = true;
-          pz.onWheel(e);
-        }}
         onPointerDown={pz.onPointerDown}
         onPointerMove={(e) => {
           pz.onPointerMove(e);
