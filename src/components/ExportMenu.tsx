@@ -9,6 +9,8 @@ import { buildExportSvg, svgToBlob } from "../export/svg";
 import { svgToPng } from "../export/png";
 import { buildVsdx, vsdxToBlob } from "../export/vsdx";
 import { datestamp, downloadBlob, safeFilename } from "../export/download";
+import { buildLayoutGraph } from "../graph/build-graph";
+import { requestLayout } from "../hooks/useLayout";
 import { useResolvedTheme } from "../hooks/useTheme";
 import { Popover } from "./ui/Popover";
 import { toast } from "./ui/toast";
@@ -37,7 +39,9 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
   /** Filename stem: process name, plus the team when one is focused. */
   const stem = `${safeFilename(process.name)}${team ? `-${safeFilename(team.name)}` : ""}`;
 
-  const run = async (kind: "json" | "csv" | "svg" | "png" | "pdf" | "vsdx" | "xlsx") => {
+  const run = async (
+    kind: "json" | "csv" | "svg" | "png" | "pdf" | "vsdx" | "xlsx" | "xlsx-all",
+  ) => {
     setOpen(false);
     setBusy(kind);
     try {
@@ -48,6 +52,35 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
       }
       if (kind === "csv") {
         exportProcessCsv(process, parties, teams, stem);
+        return;
+      }
+      if (kind === "xlsx-all") {
+        // Every process that has steps, each laid out the way the map is shown
+        // now (orientation, shape mode, detail level), whole rather than
+        // narrowed to a team.
+        const maps = [];
+        for (const p of ws.processes) {
+          if (p.steps.length === 0) continue;
+          const g = buildLayoutGraph(
+            p,
+            ws.parties,
+            ws.view.shapeMode,
+            ws.view.orientation,
+            ws.view.annotations,
+            ws.teams,
+          );
+          const l = await requestLayout(g, ws.view.orientation);
+          maps.push({ process: p, parties: ws.parties, teams: ws.teams, graph: g, layout: l });
+        }
+        if (maps.length === 0) {
+          toast("Add some steps before exporting the workspace.");
+          return;
+        }
+        const { buildXlsxWorkbook, xlsxToBlob } = await import("../export/xlsx");
+        downloadBlob(
+          xlsxToBlob(buildXlsxWorkbook(maps)),
+          `${safeFilename(ws.meta.name)}-${datestamp()}.xlsx`,
+        );
         return;
       }
       const svgEl = document.querySelector<SVGSVGElement>('[data-testid="map"] svg');
@@ -134,6 +167,14 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
             onClick={() => run("xlsx")}
           >
             Map as Excel (.xlsx)
+          </button>
+          <button
+            role="menuitem"
+            className="menu-item"
+            title="One Excel workbook with every process in the workspace, each on its own sheet"
+            onClick={() => run("xlsx-all")}
+          >
+            All maps as Excel (.xlsx)
           </button>
         </div>
       </Popover>

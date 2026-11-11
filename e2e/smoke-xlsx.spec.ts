@@ -41,5 +41,28 @@ test("the Export menu produces an Excel workbook of the map", async ({ page }) =
   // A zip package of a sensible size.
   expect(head.magic).toBe("PK");
   expect(head.size).toBeGreaterThan(1500);
+
+  // The whole workspace: add a second process, then export every map to one workbook.
+  await page.getByRole("button", { name: "Add process" }).click();
+  await page.getByTestId("add-step").click();
+  await page.getByLabel("Step name").first().fill("Close ledger");
+  await page.getByTestId("map").locator("[data-node-id]").first().waitFor();
+  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("menuitem", { name: "All maps as Excel (.xlsx)" }).click();
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { __blobs: Blob[] }).__blobs.filter((b) =>
+        b.type.includes("spreadsheetml"),
+      ).length === 2,
+    undefined,
+    { timeout: 20000 },
+  );
+  const sizes = await page.evaluate(() =>
+    (window as unknown as { __blobs: Blob[] }).__blobs
+      .filter((b) => b.type.includes("spreadsheetml"))
+      .map((b) => b.size),
+  );
+  // Two sheets' worth: bigger than the single map.
+  expect(sizes[1]).toBeGreaterThan(sizes[0]);
   expect(errors).toEqual([]);
 });

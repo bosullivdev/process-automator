@@ -174,7 +174,7 @@ function laneNameOf(ctx: XlsxContext, laneId: string): string {
  * top-to-bottom flow each lane is a band of columns under its title. The
  * titles are frozen so they stay in view while scrolling.
  */
-function buildSheet(ctx: XlsxContext, styles: Styles): Sheet {
+function buildSheet(ctx: XlsxContext, styles: Styles, selected = true): Sheet {
   const { layout, process } = ctx;
   const horizontal = layout.orientation === "horizontal";
   const titleH = TITLE_ROWS.reduce((a, b) => a + b, 0);
@@ -326,7 +326,7 @@ function buildSheet(ctx: XlsxContext, styles: Styles): Sheet {
   const xml =
     `${XML}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}">` +
     `<dimension ref="A1:${columnName(colPx.length - 1)}${nextRow + 1}"/>` +
-    `<sheetViews><sheetView showGridLines="0" tabSelected="1" workbookViewId="0">${pane}</sheetView></sheetViews>` +
+    `<sheetViews><sheetView showGridLines="0"${selected ? ' tabSelected="1"' : ""} workbookViewId="0">${pane}</sheetView></sheetViews>` +
     `<sheetFormatPr defaultRowHeight="15"/>` +
     `<cols>${cols}</cols>` +
     `<sheetData>${rows.join("")}</sheetData>` +
@@ -585,16 +585,6 @@ function addLabels(d: Drawing, ctx: XlsxContext): void {
   }
 }
 
-const CONTENT_TYPES =
-  `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-  `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
-  `<Default Extension="xml" ContentType="application/xml"/>` +
-  `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-  `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
-  `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
-  `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` +
-  `</Types>`;
-
 const rels = (items: Array<[id: string, type: string, target: string]>) =>
   `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
   items
@@ -616,38 +606,96 @@ export function sheetName(name: string): string {
   return clean || "Process map";
 }
 
-/** Every part of the workbook as XML text, keyed by its path in the zip. */
-export function buildXlsxParts(ctx: XlsxContext): Record<string, string> {
-  const styles = new Styles();
-  const sheet = buildSheet(ctx, styles);
-  const drawing = new Drawing(sheet.originX, sheet.originY);
-  // Drawn in this order so steps sit on top of arrows and labels on top of both.
-  addEdges(drawing, ctx);
-  addNodes(drawing, ctx);
-  addLabels(drawing, ctx);
-  return {
-    "[Content_Types].xml": CONTENT_TYPES,
-    "_rels/.rels": rels([["rId1", "officeDocument", "xl/workbook.xml"]]),
-    "xl/workbook.xml":
-      `${XML}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_R}">` +
-      `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="15000"/></bookViews>` +
-      `<sheets><sheet name="${esc(sheetName(ctx.process.name))}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
-    "xl/_rels/workbook.xml.rels": rels([
-      ["rId1", "worksheet", "worksheets/sheet1.xml"],
-      ["rId2", "styles", "styles.xml"],
-    ]),
-    "xl/styles.xml": styles.xml(),
-    "xl/worksheets/sheet1.xml": sheet.xml,
-    "xl/worksheets/_rels/sheet1.xml.rels": rels([["rId1", "drawing", "../drawings/drawing1.xml"]]),
-    "xl/drawings/drawing1.xml": drawing.xml(),
-  };
+/**
+ * A sheet name for each process. Excel also requires the names in a workbook
+ * to differ (ignoring case), so repeats get a number, trimmed to fit.
+ */
+export function sheetNames(names: readonly string[]): string[] {
+  const taken = new Set<string>();
+  return names.map((raw) => {
+    const base = sheetName(raw);
+    let name = base;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) {
+      const suffix = ` (${n})`;
+      name = base.slice(0, 31 - suffix.length).trim() + suffix;
+    }
+    taken.add(name.toLowerCase());
+    return name;
+  });
 }
 
-/** Zip the parts into an .xlsx file. */
-export function buildXlsx(ctx: XlsxContext): Uint8Array {
+/**
+ * Every part of a workbook as XML text, keyed by its path in the zip: one
+ * sheet, with its own drawing, per process map given. The sheets share one
+ * stylesheet, so a party has the same colours on every sheet.
+ */
+export function buildWorkbookParts(maps: readonly XlsxContext[]): Record<string, string> {
+  if (maps.length === 0) throw new Error("There is no process map to export.");
+  const styles = new Styles();
+  const names = sheetNames(maps.map((m) => m.process.name));
+  const parts: Record<string, string> = {};
+  const overrides: string[] = [];
+  const sheetList: string[] = [];
+  const workbookRels: Array<[string, string, string]> = [];
+  maps.forEach((ctx, i) => {
+    const n = i + 1;
+    const sheet = buildSheet(ctx, styles, i === 0);
+    const drawing = new Drawing(sheet.originX, sheet.originY);
+    // Drawn in this order so steps sit on top of arrows and labels on top of both.
+    addEdges(drawing, ctx);
+    addNodes(drawing, ctx);
+    addLabels(drawing, ctx);
+    parts[`xl/worksheets/sheet${n}.xml`] = sheet.xml;
+    parts[`xl/worksheets/_rels/sheet${n}.xml.rels`] = rels([
+      ["rId1", "drawing", `../drawings/drawing${n}.xml`],
+    ]);
+    parts[`xl/drawings/drawing${n}.xml`] = drawing.xml();
+    overrides.push(
+      `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+      `<Override PartName="/xl/drawings/drawing${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`,
+    );
+    sheetList.push(`<sheet name="${esc(names[i])}" sheetId="${n}" r:id="rId${n}"/>`);
+    workbookRels.push([`rId${n}`, "worksheet", `worksheets/sheet${n}.xml`]);
+  });
+  workbookRels.push([`rId${maps.length + 1}`, "styles", "styles.xml"]);
+  parts["[Content_Types].xml"] =
+    `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+    `<Default Extension="xml" ContentType="application/xml"/>` +
+    `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+    `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
+    overrides.join("") +
+    `</Types>`;
+  parts["_rels/.rels"] = rels([["rId1", "officeDocument", "xl/workbook.xml"]]);
+  parts["xl/workbook.xml"] =
+    `${XML}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_R}">` +
+    `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="15000"/></bookViews>` +
+    `<sheets>${sheetList.join("")}</sheets></workbook>`;
+  parts["xl/_rels/workbook.xml.rels"] = rels(workbookRels);
+  // Last, once every sheet has asked for the styles it needs.
+  parts["xl/styles.xml"] = styles.xml();
+  return parts;
+}
+
+/** The parts of a one-sheet workbook for a single process map. */
+export function buildXlsxParts(ctx: XlsxContext): Record<string, string> {
+  return buildWorkbookParts([ctx]);
+}
+
+function zip(parts: Record<string, string>): Uint8Array {
   const files: Record<string, Uint8Array> = {};
-  for (const [path, xml] of Object.entries(buildXlsxParts(ctx))) files[path] = strToU8(xml);
+  for (const [path, xml] of Object.entries(parts)) files[path] = strToU8(xml);
   return zipSync(files, { level: 6 });
+}
+
+/** An .xlsx file with one process map. */
+export function buildXlsx(ctx: XlsxContext): Uint8Array {
+  return zip(buildWorkbookParts([ctx]));
+}
+
+/** An .xlsx file with one sheet per process map, in the order given. */
+export function buildXlsxWorkbook(maps: readonly XlsxContext[]): Uint8Array {
+  return zip(buildWorkbookParts(maps));
 }
 
 export function xlsxToBlob(bytes: Uint8Array): Blob {

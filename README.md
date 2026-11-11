@@ -120,7 +120,9 @@ in Excel: each lane is a band of cells with its title in the party's colour
 frozen so they stay in view; steps, decisions, arrows and outcome labels are
 ordinary Excel shapes at the map's positions. Arrows follow the map's routes
 exactly and are not glued to the steps, because Excel's glued connectors pick
-their own route.
+their own route. "All maps as Excel (.xlsx)" writes the same thing
+for every process in the workspace that has steps, one sheet each, in a single
+workbook, using the orientation, shape mode and detail level currently shown.
 
 ## Development
 

@@ -6,7 +6,15 @@ import {
   type Element as XmlElement,
 } from "@xmldom/xmldom";
 import ELK from "elkjs/lib/elk.bundled.js";
-import { buildXlsx, buildXlsxParts, columnName, sheetName } from "../src/export/xlsx";
+import {
+  buildWorkbookParts,
+  buildXlsx,
+  buildXlsxParts,
+  buildXlsxWorkbook,
+  columnName,
+  sheetName,
+  sheetNames,
+} from "../src/export/xlsx";
 import { buildLayoutGraph } from "../src/graph/build-graph";
 import { layoutGraph } from "../src/graph/layout";
 import type { Orientation } from "../src/graph/layout-types";
@@ -241,6 +249,65 @@ describe("xlsx export", () => {
     const order = shapes.map((s) => all(s, "xdr:cNvPr")[0].getAttribute("name")!.split(" ")[0]);
     expect(order.lastIndexOf("Arrow")).toBeLessThan(order.indexOf("Step"));
     expect(order.lastIndexOf("Step")).toBeLessThan(order.indexOf("Label"));
+  });
+
+  it("puts each process on its own sheet of one workbook, with distinct sheet names", async () => {
+    expect(
+      sheetNames([
+        "Month End",
+        "month end",
+        "Month End",
+        "A/B",
+        "A very long process name that goes past it",
+        "A very long process name that goes past it",
+      ]),
+    ).toEqual([
+      "Month End",
+      "month end (2)",
+      "Month End (3)",
+      "A B",
+      "A very long process name that g",
+      "A very long process name th (2)",
+    ]);
+    expect(() => buildWorkbookParts([])).toThrow(/no process map/i);
+
+    const first = await build();
+    const second = await build("vertical");
+    second.process.name = first.process.name; // same name: the sheets must still differ
+    const parts = buildWorkbookParts([first, second]);
+    for (const [path, xml] of Object.entries(parts)) {
+      expect(parse(xml).errors, path).toEqual([]);
+    }
+    const { doc } = parse(parts["xl/workbook.xml"]);
+    const sheets = all(doc, "sheet");
+    expect(sheets.map((s) => s.getAttribute("name"))).toEqual([
+      "Contract  review sign",
+      "Contract  review sign (2)",
+    ]);
+    expect(sheets.map((s) => s.getAttribute("sheetId"))).toEqual(["1", "2"]);
+    // Each sheet is declared, linked from the workbook, and has its own drawing.
+    for (const n of [1, 2]) {
+      expect(parts["[Content_Types].xml"]).toContain(`PartName="/xl/worksheets/sheet${n}.xml"`);
+      expect(parts["[Content_Types].xml"]).toContain(`PartName="/xl/drawings/drawing${n}.xml"`);
+      expect(parts["xl/_rels/workbook.xml.rels"]).toContain(`Target="worksheets/sheet${n}.xml"`);
+      expect(parts[`xl/worksheets/_rels/sheet${n}.xml.rels`]).toContain(`drawing${n}.xml`);
+      expect(all(parse(parts[`xl/drawings/drawing${n}.xml`]).doc, "xdr:sp").length).toBeGreaterThan(
+        8,
+      );
+    }
+    // Only the first sheet opens selected; the second keeps its own (vertical) layout.
+    expect(parts["xl/worksheets/sheet1.xml"]).toContain('tabSelected="1"');
+    expect(parts["xl/worksheets/sheet2.xml"]).not.toContain("tabSelected");
+    expect(parts["xl/worksheets/sheet1.xml"]).toContain('xSplit="1"');
+    expect(parts["xl/worksheets/sheet2.xml"]).not.toContain("xSplit");
+    // One shared stylesheet, and a single-map workbook is the same thing with one sheet.
+    expect(Object.keys(parts).filter((p) => p.endsWith("styles.xml"))).toHaveLength(1);
+    expect(Object.keys(unzipSync(buildXlsxWorkbook([first, second]))).sort()).toEqual(
+      Object.keys(parts).sort(),
+    );
+    expect(buildXlsxParts(first)["xl/worksheets/sheet1.xml"]).toBe(
+      parts["xl/worksheets/sheet1.xml"],
+    );
   });
 
   it("zips into a package whose parts match", async () => {
