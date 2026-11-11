@@ -8,16 +8,46 @@ export interface ExportFont {
   file: string;
   /** jsPDF font style name */
   style: "normal" | "bold";
+  /**
+   * Every weight and style the map asks for that this file stands in for in a
+   * PDF. jsPDF looks a font up by exact weight and style and silently falls
+   * back to Times when there is no entry, so each one used must be listed.
+   */
+  pdfFaces: Array<{ weight: number; style: "normal" | "italic" }>;
 }
 
 export const EXPORT_FONTS: ExportFont[] = [
-  { family: "Inter", weight: 400, file: "/fonts/Inter-Regular.ttf", style: "normal" },
-  { family: "Inter", weight: 600, file: "/fonts/Inter-SemiBold.ttf", style: "bold" },
+  {
+    family: "Inter",
+    weight: 400,
+    file: "/fonts/Inter-Regular.ttf",
+    style: "normal",
+    // Medium (step names) and italic (the "default" tag) have no file of
+    // their own; regular is the nearest.
+    pdfFaces: [100, 200, 300, 400, 500].flatMap((weight) => [
+      { weight, style: "normal" as const },
+      { weight, style: "italic" as const },
+    ]),
+  },
+  {
+    family: "Inter",
+    weight: 600,
+    file: "/fonts/Inter-SemiBold.ttf",
+    style: "bold",
+    pdfFaces: [600, 700, 800, 900].flatMap((weight) => [
+      { weight, style: "normal" as const },
+      { weight, style: "italic" as const },
+    ]),
+  },
   {
     family: "JetBrains Mono",
     weight: 400,
     file: "/fonts/JetBrainsMono-Regular.ttf",
     style: "normal",
+    pdfFaces: [100, 200, 300, 400, 500, 600, 700, 800, 900].flatMap((weight) => [
+      { weight, style: "normal" as const },
+      { weight, style: "italic" as const },
+    ]),
   },
 ];
 
