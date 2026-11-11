@@ -23,6 +23,9 @@ export const BADGE_SIZE = 18;
 export const BADGE_GAP = 4;
 /** Team scope pill row, under the badges. */
 export const TEAM_ROW = 18;
+/** Control marker row, last in the block: a shield icon and the control's reference. */
+export const CONTROL_ROW = 18;
+export const CONTROL_ICON = 12;
 export type Annotations = "full" | "minimal";
 const OUTSIDE_SIZE = 11;
 const LINE_H = 14;
@@ -52,6 +55,7 @@ function sizeGateway(kind: "fork" | "join"): Sized {
       techWidth: 0,
       badges: 0,
       teamsWidth: 0,
+      controlWidth: 0,
       outside: false,
       labelWidth: 0,
       labelHeight: 0,
@@ -90,6 +94,21 @@ export function sizeStep(
     : undefined;
   const teamsWidth = teams ? Math.ceil(measureText(teams, SUB_SIZE)) + 16 : 0;
 
+  // A control is part of what the step is, so its marker shows in minimal mode too.
+  const controlRef = step.controlRef?.trim() ?? "";
+  const control = step.hasControl
+    ? wrapToWidth(
+        controlRef ? `Control · ${controlRef}` : "Control",
+        OUTSIDE_MAX_WIDTH - 16 - CONTROL_ICON,
+        SUB_SIZE,
+        1,
+        600,
+      )[0]
+    : undefined;
+  const controlWidth = control
+    ? Math.ceil(measureText(control, SUB_SIZE, 600)) + 16 + CONTROL_ICON
+    : 0;
+
   // Shape and inside text.
   let sw: number;
   let sh: number;
@@ -112,8 +131,9 @@ export function sizeStep(
   const nameW = outside ? linesWidth(nameLines, OUTSIDE_SIZE, 500) : 0;
   const aboveTeams =
     nameH + (tech ? (nameH ? TECH_GAP : 0) + TECH_ROW : 0) + (badges ? BADGE_ROW : 0);
-  const labelHeight = aboveTeams + (teams ? (aboveTeams ? TECH_GAP : 0) + TEAM_ROW : 0);
-  const labelWidth = Math.ceil(Math.max(nameW, techWidth, badgesWidth, teamsWidth));
+  const aboveControl = aboveTeams + (teams ? (aboveTeams ? TECH_GAP : 0) + TEAM_ROW : 0);
+  const labelHeight = aboveControl + (control ? (aboveControl ? TECH_GAP : 0) + CONTROL_ROW : 0);
+  const labelWidth = Math.ceil(Math.max(nameW, techWidth, badgesWidth, teamsWidth, controlWidth));
   const text: NodeText = {
     nameLines,
     tech,
@@ -121,6 +141,8 @@ export function sizeStep(
     badges,
     teams,
     teamsWidth,
+    control,
+    controlWidth,
     outside,
     labelWidth,
     labelHeight,

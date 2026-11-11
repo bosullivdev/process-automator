@@ -25,6 +25,8 @@ const stepSchema = z.object({
   // Added with team variants; older files load with every step applying to all teams.
   teamIds: z.array(z.string()).default([]),
   isSubProcess: z.boolean().optional(),
+  hasControl: z.boolean().optional(),
+  controlRef: z.string().optional(),
   startKind: z.enum(["none", "message", "timer"]).optional(),
   endKind: z.enum(["normal", "terminate"]).optional(),
 });

@@ -464,6 +464,34 @@ export function StepTable({ process, flags, focus }: Props) {
                   />
                 </Td>
                 <Td>
+                  <div className="flex items-center gap-1.5 pl-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Has a control"
+                      title="This step involves a control"
+                      className="h-3.5 w-3.5 shrink-0 accent-[var(--color-accent)]"
+                      checked={!!step.hasControl}
+                      onChange={(e) =>
+                        patchStep(
+                          step,
+                          e.target.checked
+                            ? { hasControl: true }
+                            : { hasControl: false, controlRef: "" },
+                        )
+                      }
+                    />
+                    <input
+                      className="cell-input min-w-0"
+                      aria-label="Control reference"
+                      placeholder={step.hasControl ? "Reference" : ""}
+                      disabled={!step.hasControl}
+                      value={step.controlRef ?? ""}
+                      onChange={(e) => patchStep(step, { controlRef: e.target.value })}
+                      onKeyDown={(e) => onTextKeyDown(e, step)}
+                    />
+                  </div>
+                </Td>
+                <Td>
                   <ContributorsCombobox
                     value={step.contributorIds}
                     parties={parties}

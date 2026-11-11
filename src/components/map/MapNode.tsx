@@ -6,6 +6,8 @@ import {
   BADGE_GAP,
   BADGE_ROW,
   BADGE_SIZE,
+  CONTROL_ICON,
+  CONTROL_ROW,
   TEAM_ROW,
   TECH_GAP,
   TECH_ROW,
@@ -77,6 +79,9 @@ export function MapNode({
     ? [
         `${step.displayNo}: ${step.name || "Untitled"}`,
         step.technology ? `Technology: ${step.technology}` : "",
+        step.hasControl
+          ? `Control${step.controlRef?.trim() ? `: ${step.controlRef.trim()}` : ""}`
+          : "",
         teamNames.length ? `Teams: ${teamNames.join(", ")}` : "",
         step.notes ? `Notes: ${step.notes}` : "",
         ...(flags ?? []).map(
@@ -198,6 +203,12 @@ export function MapNode({
   const teamsTop = afterBadges + (nameH || showTech || badges.length ? TECH_GAP : 0);
   const teamsY = teamsTop + TEAM_ROW / 2;
   const teamsLeft = alignLeft(teamsW);
+  const showControl = !!text.control;
+  const controlW = text.controlWidth;
+  const afterTeams = showTeams ? teamsTop + TEAM_ROW : afterBadges;
+  const controlTop = afterTeams + (nameH || showTech || badges.length || showTeams ? TECH_GAP : 0);
+  const controlY = controlTop + CONTROL_ROW / 2;
+  const controlLeft = alignLeft(controlW);
   // Inside name block for tasks, centred (nudged up when the sub-process marker needs room).
   const insideTop = cy - (nameLines.length * LINE_H) / 2 - (step?.isSubProcess ? 6 : 0);
 
@@ -319,6 +330,41 @@ export function MapNode({
             fill="var(--text-muted)"
           >
             {text.teams}
+          </text>
+        </g>
+      )}
+      {showControl && (
+        <g data-control style={{ pointerEvents: "none" }}>
+          <rect
+            x={controlLeft}
+            y={controlY - 8}
+            width={controlW}
+            height={16}
+            rx={4}
+            fill="var(--surface)"
+            stroke="var(--text)"
+            strokeWidth={1}
+          />
+          {/* Shield with a tick */}
+          <path
+            transform={`translate(${controlLeft + 6}, ${controlY - 6})`}
+            d="M5 0.5 L9.5 2 V5.5 C9.5 8.5 7.5 10.5 5 11.5 C2.5 10.5 0.5 8.5 0.5 5.5 V2 Z M2.8 5.8 L4.4 7.4 L7.3 4.2"
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth={1.1}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          <text
+            x={controlLeft + 8 + CONTROL_ICON + (controlW - 16 - CONTROL_ICON) / 2}
+            y={controlY}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={10}
+            fontWeight={600}
+            fill="var(--text)"
+          >
+            {text.control}
           </text>
         </g>
       )}

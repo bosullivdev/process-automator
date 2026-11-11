@@ -297,7 +297,9 @@ export const useStore = create<StoreState>()(
               if ("ownerId" in patch) ensureLane(proc, s.ownerId);
             },
             // Text edits coalesce; structural edits always get their own entry.
-            Object.keys(patch).every((k) => ["name", "technology", "notes"].includes(k)),
+            Object.keys(patch).every((k) =>
+              ["name", "technology", "notes", "controlRef"].includes(k),
+            ),
           ),
         setStepType: (processId, stepId, type) =>
           edit((d) => {

@@ -63,6 +63,10 @@ export interface Step {
   notes: string;
   teamIds: string[]; // team IDs this step applies to; empty = every team
   isSubProcess?: boolean; // visual marker only
+  /** The step involves a control (a check, approval or reconciliation documented elsewhere). */
+  hasControl?: boolean;
+  /** Reference of that control in the user's own controls document, free text. */
+  controlRef?: string;
   startKind?: StartKind; // start only
   endKind?: EndKind; // end only
 }

@@ -11,8 +11,11 @@ a static site.
 ## Using it
 
 - **Table (left)**: one row per step. Columns: No, Name, Owner, Type, Next,
-  Technology, Contributors, Notes. Row order has no meaning; flow is defined by
-  the Next column. The Type dropdown lists each type with its variants
+  Technology, Control, Contributors, Notes. Row order has no meaning; flow is
+  defined by the Next column. Tick Control on a step that involves a control
+  and type its reference from your controls document; the map shows a
+  "Control · REF" marker under the step (at minimal detail too), and the CSV
+  and Visio exports carry the tick and the reference. The Type dropdown lists each type with its variants
   (message or timer start, sub-process task, terminate end) so a row needs a
   single choice. "Sort by flow" reorders the rows to follow the process from
   its start, one branch at a time, which is handy before reading or exporting

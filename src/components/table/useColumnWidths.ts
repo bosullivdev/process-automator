@@ -7,6 +7,7 @@ export type ColumnKey =
   | "type"
   | "next"
   | "technology"
+  | "control"
   | "contributors"
   | "teams"
   | "notes"
@@ -29,6 +30,7 @@ export const COLUMNS: readonly ColumnDef[] = [
   { key: "type", label: "Type", width: 168, min: 120 },
   { key: "next", label: "Next", width: 240, min: 120 },
   { key: "technology", label: "Technology", width: 140, min: 80 },
+  { key: "control", label: "Control", width: 150, min: 90 },
   { key: "contributors", label: "Contributors", width: 160, min: 100 },
   { key: "teams", label: "Teams", width: 140, min: 90 },
   { key: "notes", label: "Notes", width: 200, min: 100 },

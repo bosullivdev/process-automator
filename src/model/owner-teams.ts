@@ -165,6 +165,8 @@ export function mergeSteps(
     next,
     technology: keep.technology || drop.technology,
     notes: keep.notes || drop.notes,
+    hasControl: keep.hasControl || drop.hasControl,
+    controlRef: keep.controlRef || drop.controlRef,
     contributorIds: union(keep.contributorIds, drop.contributorIds).filter((c) => !group.has(c)),
   };
   const tidy = tidyOwnerTeams(merged, all);

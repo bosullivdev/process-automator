@@ -15,6 +15,9 @@ export interface NodeText {
   /** Team scope line ("North, South"), fitted to one line, and the width of its pill. */
   teams?: string;
   teamsWidth: number;
+  /** Control marker ("Control" or "Control · REF"), fitted to one line, and the width of its pill. */
+  control?: string;
+  controlWidth: number;
   /** Whether the name is drawn outside the shape (start, end, decision). */
   outside: boolean;
   /** Outside label box size (0 when the name is inside). */

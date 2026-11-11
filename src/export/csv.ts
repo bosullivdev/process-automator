@@ -12,6 +12,8 @@ export const CSV_COLUMNS = [
   "Contributors",
   "Teams",
   "Notes",
+  "Control",
+  "Control ref",
 ] as const;
 
 /** Quote a CSV field when it contains a comma, quote or line break. */
@@ -71,6 +73,8 @@ export function processToCsv(
       s.contributorIds.map(partyName).join("; "),
       teamNames(s.teamIds, teams).join("; "),
       s.notes,
+      s.hasControl ? "Yes" : "",
+      s.hasControl ? (s.controlRef ?? "").trim() : "",
     ];
   });
   const lines = [CSV_COLUMNS.join(","), ...rows.map((r) => r.map(csvField).join(","))];

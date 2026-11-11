@@ -196,9 +196,11 @@ describe("csv with teams", () => {
     const p = party("Ops");
     const csv = processToCsv(fixture(), [p], teams);
     const lines = csv.trim().split("\r\n");
-    expect(lines[0]).toBe("No,Name,Owner,Type,Next,Technology,Contributors,Teams,Notes");
-    expect(lines[2]).toBe("2,Review,,task,3: Approve; 4: Step 4 {South},,,,");
-    expect(lines[3]).toBe("3,Approve,,task,4: Step 4,,,North,");
+    expect(lines[0]).toBe(
+      "No,Name,Owner,Type,Next,Technology,Contributors,Teams,Notes,Control,Control ref",
+    );
+    expect(lines[2]).toBe("2,Review,,task,3: Approve; 4: Step 4 {South},,,,,,");
+    expect(lines[3]).toBe("3,Approve,,task,4: Step 4,,,North,,,");
     expect(lines[5]).toContain("3: Approve [Yes] {North}; 4: Step 4 [Yes] {South}; 2: Review [No]");
   });
 });

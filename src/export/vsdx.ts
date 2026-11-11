@@ -250,6 +250,7 @@ function stepText(step: Step | undefined, ln: LayoutNode): string {
   if (!step) return ln.kind === "fork" ? "+" : ln.kind === "join" ? "+" : "";
   const lines = [step.name.trim() || "Untitled"];
   if (ln.text.tech) lines.push(ln.text.tech);
+  if (ln.text.control) lines.push(ln.text.control);
   return lines.join("\n");
 }
 
@@ -318,6 +319,12 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
             ["Teams", "Teams", teamNames(step.teamIds, teams).join(", ") || "All teams"],
             ["Technology", "Technology", step.technology],
             ["Notes", "Notes", step.notes],
+            ["Control", "Control", step.hasControl ? "Yes" : ""],
+            [
+              "ControlRef",
+              "Control reference",
+              step.hasControl ? (step.controlRef ?? "").trim() : "",
+            ],
           ])
         : "") +
       (text ? `<Text>${esc(text)}</Text>` : "");
