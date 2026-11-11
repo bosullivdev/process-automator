@@ -105,6 +105,20 @@ export default function App() {
   const { layout, updating } = useLayout(graph, view.orientation);
 
   const onRatio = useCallback((splitRatio: number) => setView({ splitRatio }), [setView]);
+  const onTableHidden = useCallback((tableHidden: boolean) => setView({ tableHidden }), [setView]);
+  // Ctrl/Cmd+\ tucks the table away so the map fills the window, and brings it back.
+  const tableHidden = !!view.tableHidden;
+  useEffect(() => {
+    if (narrow) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === "\\") {
+        e.preventDefault();
+        setView({ tableHidden: !tableHidden });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [narrow, tableHidden, setView]);
   const cycleTheme = () =>
     setView({
       theme: view.theme === "system" ? "light" : view.theme === "light" ? "dark" : "system",
@@ -233,7 +247,15 @@ export default function App() {
         </div>
       ) : (
         <div className="min-h-0 flex-1">
-          <SplitPane ratio={view.splitRatio} onRatioChange={onRatio} left={table} right={map} />
+          <SplitPane
+            ratio={view.splitRatio}
+            onRatioChange={onRatio}
+            left={table}
+            right={map}
+            leftHidden={!!view.tableHidden}
+            onLeftHiddenChange={onTableHidden}
+            leftName="table"
+          />
         </div>
       )}
       <PartySheet open={partiesOpen} onClose={() => setPartiesOpen(false)} />

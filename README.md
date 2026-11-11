@@ -10,7 +10,9 @@ a static site.
 
 ## Using it
 
-- **Table (left)**: one row per step. Columns: No, Name, Owner, Type, Next,
+- **Table (left)**: one row per step. The small arrow at the top of the divider
+  (or Ctrl/Cmd+\) hides the table so the map fills the window, and brings it
+  back; the choice is remembered. Columns: No, Name, Owner, Type, Next,
   Technology, Control, Contributors, Notes. Row order has no meaning; flow is
   defined by the Next column. Tick Control on a step that involves a control
   and type its reference from your controls document; the map shows a

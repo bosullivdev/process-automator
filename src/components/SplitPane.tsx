@@ -5,12 +5,25 @@ interface Props {
   onRatioChange: (ratio: number) => void;
   left: ReactNode;
   right: ReactNode;
+  /** The left pane is tucked away and the right pane fills the width. */
+  leftHidden?: boolean;
+  onLeftHiddenChange?: (hidden: boolean) => void;
+  /** What the left pane holds, for the hide/show button's label. */
+  leftName?: string;
 }
 
 const MIN = 0.2;
 const MAX = 0.8;
 
-export function SplitPane({ ratio, onRatioChange, left, right }: Props) {
+export function SplitPane({
+  ratio,
+  onRatioChange,
+  left,
+  right,
+  leftHidden = false,
+  onLeftHiddenChange,
+  leftName = "left pane",
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -41,6 +54,38 @@ export function SplitPane({ ratio, onRatioChange, left, right }: Props) {
     if (e.key === "ArrowLeft") onRatioChange(Math.max(MIN, ratio - 0.02));
     if (e.key === "ArrowRight") onRatioChange(Math.min(MAX, ratio + 0.02));
   };
+
+  const toggle = onLeftHiddenChange && (
+    <button
+      type="button"
+      data-testid="toggle-left-pane"
+      aria-label={leftHidden ? `Show ${leftName}` : `Hide ${leftName}`}
+      aria-pressed={leftHidden}
+      title={`${leftHidden ? "Show" : "Hide"} ${leftName} (Ctrl+\\)`}
+      // Keep a press on the button from starting a divider drag.
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={() => onLeftHiddenChange(!leftHidden)}
+      className="absolute top-2 z-20 flex h-7 w-5 items-center justify-center rounded-lg border text-xs leading-none hover:border-[var(--color-accent)] focus-visible:border-[var(--color-accent)]"
+      style={{
+        left: leftHidden ? 8 : -10,
+        cursor: "pointer",
+        background: "var(--surface)",
+        borderColor: "var(--border-strong)",
+        color: "var(--text-muted)",
+      }}
+    >
+      {leftHidden ? "›" : "‹"}
+    </button>
+  );
+
+  if (leftHidden) {
+    return (
+      <div className="relative h-full min-h-0 w-full overflow-hidden">
+        {right}
+        {toggle}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -78,6 +123,7 @@ export function SplitPane({ ratio, onRatioChange, left, right }: Props) {
           className="absolute top-0 bottom-0 left-0 w-px"
           style={{ background: "var(--border)" }}
         />
+        {toggle}
       </div>
       <div className="min-w-0 min-h-0 flex-1 overflow-hidden">{right}</div>
     </div>

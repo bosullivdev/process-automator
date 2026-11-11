@@ -68,6 +68,7 @@ const viewSchema = z.object({
   annotations: z.enum(["full", "minimal"]).default("full"),
   highlightTeamId: z.string().nullable().default(null),
   teamFocus: z.enum(["highlight", "isolate"]).default("highlight"),
+  tableHidden: z.boolean().optional(),
 });
 
 export const workspaceV1Schema = z.object({

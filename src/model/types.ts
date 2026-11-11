@@ -90,4 +90,6 @@ export interface ViewSettings {
   highlightTeamId: string | null;
   /** "highlight" fades everything outside the team; "isolate" shows the team's variant alone. */
   teamFocus: "highlight" | "isolate";
+  /** The table pane is tucked away so the map fills the window (wide screens only). */
+  tableHidden?: boolean;
 }
