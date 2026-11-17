@@ -316,7 +316,11 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
                 .map((id) => partyById.get(id)?.name ?? "Unknown party")
                 .join(", "),
             ],
-            ["Teams", "Teams", teamNames(step.teamIds, teams).join(", ") || "All teams"],
+            [
+              "Teams",
+              "Teams",
+              teams.length ? teamNames(step.teamIds, teams).join(", ") || "All teams" : "",
+            ],
             ["Technology", "Technology", step.technology],
             ["Notes", "Notes", step.notes],
             ["Control", "Control", step.hasControl ? "Yes" : ""],

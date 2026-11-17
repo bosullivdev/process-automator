@@ -14,7 +14,7 @@ import { NARROW_QUERY, useMediaQuery } from "./hooks/useMediaQuery";
 import { useApplyTheme } from "./hooks/useTheme";
 import { useLayout } from "./hooks/useLayout";
 import { flagsByStep, validateProcess } from "./model/validate";
-import { processForTeam, teamView, type TeamFocus } from "./model/team";
+import { processForTeam, teamView, withoutTeamScopes, type TeamFocus } from "./model/team";
 import { startAutosave } from "./store/autosave";
 import { redo, selectActiveProcess, undo, useStore } from "./store/workspace";
 
@@ -68,8 +68,14 @@ export default function App() {
     () => (process && focus ? processForTeam(process, focus.teamId) : process),
     [process, focus],
   );
-  /** What the map and exports show: the variant alone when isolating, else the master. */
-  const shown = focus?.mode === "isolate" ? variant : process;
+  /**
+   * What the map and exports show: the master, or when isolating, the team's
+   * variant alone and without team tags, so it reads as a plain process.
+   */
+  const shown = useMemo(
+    () => (focus?.mode === "isolate" && variant ? withoutTeamScopes(variant) : process),
+    [focus?.mode, variant, process],
+  );
 
   const flags = useMemo(
     () => (variant ? validateProcess(variant, { parties, teams }) : []),
@@ -148,7 +154,7 @@ export default function App() {
     <MapView
       process={shown}
       parties={parties}
-      teams={teams}
+      teams={focus?.mode === "isolate" ? [] : teams}
       focus={focus}
       graph={graph}
       layout={layout}

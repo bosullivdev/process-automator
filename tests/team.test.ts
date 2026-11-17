@@ -10,7 +10,9 @@ import {
   teamNames,
   teamUsage,
   teamView,
+  withoutTeamScopes,
 } from "../src/model/team";
+import { buildLayoutGraph } from "../src/graph/build-graph";
 import { validateProcess } from "../src/model/validate";
 import { processToCsv } from "../src/export/csv";
 import { party, process, step, workspace } from "./fixtures";
@@ -106,6 +108,23 @@ describe("processForTeam", () => {
       const flags = validateProcess(processForTeam(master, t.id), ws);
       expect(flags.filter((f) => f.severity === "error")).toEqual([]);
     }
+  });
+
+  it("withoutTeamScopes leaves the variant's route but no team tags", () => {
+    const south = processForTeam(fixture(), "south");
+    const plain = withoutTeamScopes(south);
+    expect(plain.steps.map((s) => s.id)).toEqual(south.steps.map((s) => s.id));
+    expect(plain.steps.every((s) => s.teamIds.length === 0 && !s.ownerTeams)).toBe(true);
+    expect(plain.steps[1].next).toEqual([{ targetId: "s4" }]);
+    expect(plain.steps[3].next).toEqual([
+      { targetId: "s4", label: "Yes" },
+      { targetId: "s2", label: "No" },
+    ]);
+    // The source is untouched.
+    expect(south.steps[1].next).toEqual([{ targetId: "s4", teamIds: ["south"] }]);
+    // No team column content in the table export either.
+    const graph = buildLayoutGraph(plain, [], "simple", "horizontal", "full", teams);
+    expect(graph.nodes.every((n) => n.teamIds.length === 0 && !n.text?.teams)).toBe(true);
   });
 
   it("teamView lists the member steps and link keys", () => {

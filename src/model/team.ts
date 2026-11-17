@@ -178,6 +178,31 @@ export function processForTeam(process: Process, teamId: string): Process {
   };
 }
 
+/**
+ * A team's variant as a process in its own right: the same steps and links
+ * with every team tag removed. Shown on its own, there is no other team to
+ * tell it apart from, so the map and exports draw no team labels, no
+ * team-coloured arrows and no team legend.
+ */
+export function withoutTeamScopes(process: Process): Process {
+  return {
+    ...process,
+    steps: process.steps.map((s) => {
+      const out: Step = {
+        ...s,
+        teamIds: [],
+        next: s.next.map((l) => {
+          const link: NextLink = { ...l };
+          delete link.teamIds;
+          return link;
+        }),
+      };
+      delete out.ownerTeams;
+      return out;
+    }),
+  };
+}
+
 export interface TeamView {
   /** Steps that take part in the team's variant. */
   stepIds: Set<string>;

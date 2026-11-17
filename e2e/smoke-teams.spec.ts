@@ -86,6 +86,10 @@ test("team variants: tag steps, highlight, isolate and export", async ({ page })
   await expect(map.locator("[data-node-id]")).toHaveCount(3);
   await expect(map.locator("[data-edge-id]")).toHaveCount(2);
   await expect(page.getByLabel("Step name")).toHaveCount(3);
+  // On its own the variant is a plain process: no team-coloured arrows, no team labels.
+  await expect(map.locator('marker[id^="arrow-team-"]')).toHaveCount(0);
+  await expect(map.locator('[data-edge-id] [marker-end^="url(#arrow-team-"]')).toHaveCount(0);
+  await expect(map.locator("text").filter({ hasText: /^(North|South)$/ })).toHaveCount(0);
 
   // A row added while isolating belongs to South.
   await page.getByLabel("Step name").nth(1).focus();
@@ -107,6 +111,8 @@ test("team variants: tag steps, highlight, isolate and export", async ({ page })
   expect(svg).toContain("Team: South only");
   expect(svg).toContain("Review accruals");
   expect(svg).not.toContain("Regional approval");
+  expect(svg).not.toContain("TEAMS (arrow colours)");
+  expect(svg).not.toContain("arrow-team-");
 
   // Back to all teams shows everything again.
   await page.getByTestId("team-menu").click();

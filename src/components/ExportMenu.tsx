@@ -31,8 +31,11 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const theme = useResolvedTheme();
   const parties = useStore((s) => s.parties);
-  const teams = useStore((s) => s.teams);
-  const team = focus ? teams.find((t) => t.id === focus.teamId) : undefined;
+  const allTeams = useStore((s) => s.teams);
+  const team = focus ? allTeams.find((t) => t.id === focus.teamId) : undefined;
+  // One team's variant on its own is exported as a plain process: no team
+  // labels, arrow colours or legend. Only the title block names the team.
+  const teams = focus?.mode === "isolate" ? [] : allTeams;
   const teamLine = team
     ? `Team: ${team.name}${focus?.mode === "isolate" ? " only" : " (highlighted)"}`
     : undefined;
