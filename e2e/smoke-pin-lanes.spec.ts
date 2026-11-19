@@ -40,14 +40,18 @@ test("pinned lane titles stay at the edge of the map while it is panned", async 
   await expect(pinned).toHaveCount(0);
 
   // Vertical flow pins the titles to the top edge instead.
+  // Wait for the new layout: it arrives a moment after the click and re-fits
+  // the map, which would undo a pan made against the old one.
   await page.getByRole("button", { name: "Toggle orientation" }).click();
+  await expect(map).toHaveAttribute("data-orientation", "vertical");
   await expect(map.locator("[data-lane-id]")).toHaveCount(1);
   const l1 = (await lane.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.wheel(0, Math.round(l1.y - box.y + l1.height / 2));
+  const box1 = (await map.boundingBox())!;
+  await page.mouse.move(box1.x + box1.width / 2, box1.y + box1.height / 2);
+  await page.mouse.wheel(0, Math.round(l1.y - box1.y + l1.height / 2));
   await expect(pinned).toHaveCount(1);
   const top = (await pinned.locator("rect").first().boundingBox())!;
-  expect(top.y).toBeCloseTo(box.y, 0);
+  expect(top.y).toBeCloseTo((await map.boundingBox())!.y, 0);
 
   // The setting is remembered.
   await expect(page.getByTestId("save-status")).toHaveText("Saved");

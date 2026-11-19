@@ -222,7 +222,8 @@ export default function App() {
           Pin lanes
         </button>
         <span
-          className="flex items-center gap-1 text-xs text-[var(--text-muted)]"
+          // A fixed width, so the header does not re-wrap (and move the map) as the text changes.
+          className="flex w-[7.5rem] shrink-0 items-center gap-1 text-xs whitespace-nowrap text-[var(--text-muted)]"
           data-testid="save-status"
           aria-live="polite"
         >

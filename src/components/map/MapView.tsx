@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Party, Process, Team } from "../../model/types";
 import type { Flag } from "../../model/validate";
 import { linkTeams, stepInTeam, teamNames as namesOf, type TeamFocus } from "../../model/team";
@@ -71,7 +71,8 @@ export function MapView({
     laneId === UNASSIGNED_LANE ? "Unassigned" : (partyById.get(laneId)?.name ?? "Unknown");
 
   // Keep the whole map in view after each layout until the user pans or zooms;
-  // switching process or orientation starts afresh.
+  // switching process or orientation starts afresh. Fitting happens before
+  // paint so a new layout is never shown, even for a frame, at the old position.
   const userAdjusted = useRef(false);
   // Wheel over the map pans it and Ctrl/Cmd+wheel zooms it, never the page.
   useEffect(() => {
@@ -84,7 +85,7 @@ export function MapView({
     el.addEventListener("wheel", handle, { passive: false });
     return () => el.removeEventListener("wheel", handle);
   }, [onWheel]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!layout || layout.width === 0) return;
     const key = `${process.id}:${layout.orientation}`;
     if (fittedFor.current !== key) {
@@ -239,6 +240,7 @@ export function MapView({
       style={{ background: "var(--bg)", touchAction: "none" }}
       data-testid="map"
       data-updating={updating}
+      data-orientation={layout?.orientation}
     >
       <svg
         className="h-full w-full"
