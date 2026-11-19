@@ -15,7 +15,7 @@ import { useResolvedTheme } from "../hooks/useTheme";
 import { Popover } from "./ui/Popover";
 import { toast } from "./ui/toast";
 import type { Process } from "../model/types";
-import type { TeamFocus } from "../model/team";
+import { processForTeam, withoutTeamScopes, type TeamFocus } from "../model/team";
 
 interface Props {
   /** The process as shown: the whole thing, or one team's variant when isolated. */
@@ -59,10 +59,13 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
       }
       if (kind === "xlsx-all") {
         // Every process that has steps, each laid out the way the map is shown
-        // now (orientation, shape mode, detail level), whole rather than
-        // narrowed to a team.
+        // now: orientation, shape mode, detail level and team view. With one
+        // team shown on its own, every sheet is that team's variant as a
+        // plain process; processes the team has no steps in are left out.
+        const isolated = focus?.mode === "isolate" ? focus.teamId : null;
         const maps = [];
-        for (const p of ws.processes) {
+        for (const master of ws.processes) {
+          const p = isolated ? withoutTeamScopes(processForTeam(master, isolated)) : master;
           if (p.steps.length === 0) continue;
           const g = buildLayoutGraph(
             p,
@@ -73,16 +76,21 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
             ws.teams,
           );
           const l = await requestLayout(g, ws.view.orientation);
-          maps.push({ process: p, parties: ws.parties, teams: ws.teams, graph: g, layout: l });
+          maps.push({ process: p, parties: ws.parties, teams, graph: g, layout: l, teamLine });
         }
         if (maps.length === 0) {
-          toast("Add some steps before exporting the workspace.");
+          toast(
+            isolated && team
+              ? `No process has steps for ${team.name}.`
+              : "Add some steps before exporting the workspace.",
+          );
           return;
         }
         const { buildXlsxWorkbook, xlsxToBlob } = await import("../export/xlsx");
+        const teamPart = team ? `-${safeFilename(team.name)}` : "";
         downloadBlob(
           xlsxToBlob(buildXlsxWorkbook(maps)),
-          `${safeFilename(ws.meta.name)}-${datestamp()}.xlsx`,
+          `${safeFilename(ws.meta.name)}${teamPart}-${datestamp()}.xlsx`,
         );
         return;
       }
@@ -174,7 +182,11 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
           <button
             role="menuitem"
             className="menu-item"
-            title="One Excel workbook with every process in the workspace, each on its own sheet"
+            title={
+              focus?.mode === "isolate" && team
+                ? `One Excel workbook with ${team.name}'s variant of every process, each on its own sheet`
+                : "One Excel workbook with every process in the workspace, each on its own sheet"
+            }
             onClick={() => run("xlsx-all")}
           >
             All maps as Excel (.xlsx)
