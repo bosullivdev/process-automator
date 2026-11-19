@@ -27,6 +27,7 @@ const stepSchema = z.object({
   isSubProcess: z.boolean().optional(),
   hasControl: z.boolean().optional(),
   controlRef: z.string().optional(),
+  missingInfo: z.boolean().optional(),
   startKind: z.enum(["none", "message", "timer"]).optional(),
   endKind: z.enum(["normal", "terminate"]).optional(),
 });

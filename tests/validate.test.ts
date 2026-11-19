@@ -175,6 +175,16 @@ describe("validateProcess warnings", () => {
     ]);
     expect(codes(validateProcess(p, noParties), "a")).toContain("unassigned-owner");
   });
+
+  it("missing-info", () => {
+    const p = process([
+      step({ id: "a", displayNo: 1, type: "start", next: [{ targetId: "b" }], missingInfo: true }),
+      step({ id: "b", displayNo: 2, type: "end", missingInfo: false }),
+    ]);
+    const flags = validateProcess(p, noParties);
+    expect(codes(flags, "a")).toContain("missing-info");
+    expect(codes(flags, "b")).not.toContain("missing-info");
+  });
 });
 
 describe("helpers", () => {

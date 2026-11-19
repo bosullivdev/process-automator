@@ -61,8 +61,15 @@ export function MapNode({
   const y = node.y + layoutNode.cy - height / 2;
   const cx = x + width / 2;
   const cy = y + height / 2;
-  const stroke = selected ? "var(--color-accent)" : colours.owner.fill;
-  const strokeWidth = selected ? 3 : 2;
+  // A step marked as missing information is outlined in red instead of its
+  // party's colour; the lane still says whose it is.
+  const missing = !!step?.missingInfo;
+  const stroke = selected
+    ? "var(--color-accent)"
+    : missing
+      ? "var(--color-danger)"
+      : colours.owner.fill;
+  const strokeWidth = selected || missing ? 3 : 2;
   const fill = "var(--surface)";
   const dash =
     colours.owner.pattern === "stripe"
@@ -78,6 +85,7 @@ export function MapNode({
   const title = step
     ? [
         `${step.displayNo}: ${step.name || "Untitled"}`,
+        missing ? "Missing information" : "",
         step.technology ? `Technology: ${step.technology}` : "",
         step.hasControl
           ? `Control${step.controlRef?.trim() ? `: ${step.controlRef.trim()}` : ""}`
@@ -233,6 +241,7 @@ export function MapNode({
       style={{ outline: "none" }}
       opacity={dimmed ? 0.18 : undefined}
       data-dimmed={dimmed || undefined}
+      data-missing-info={missing || undefined}
     >
       <title>{title}</title>
       {shape}

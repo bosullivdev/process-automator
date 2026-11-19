@@ -425,6 +425,8 @@ const preset = (name: string, adjust = "") =>
 const outline = (px: number, colour: string, extra = "") =>
   `<a:ln w="${emu(px)}">${solid(colour)}${extra}</a:ln>`;
 const NO_LINE = `<a:ln><a:noFill/></a:ln>`;
+/** Outline of a step marked as missing information: the app's danger red. */
+const MISSING = "DC2626";
 const NO_FILL = `<a:noFill/>`;
 
 /** Arrows, exactly along the map's routes. */
@@ -492,7 +494,9 @@ function addNodes(d: Drawing, ctx: XlsxContext): void {
     if (!ln) continue;
     const gateway = ln.kind === "fork" || ln.kind === "join";
     const step: Step | undefined = gateway ? undefined : stepById.get(ln.stepId);
-    const colour = hex(laneColourOf(ctx, ln.laneId).fill);
+    // A step marked as missing information is outlined in red, as on the map.
+    const missing = !!step?.missingInfo;
+    const colour = missing ? MISSING : hex(laneColourOf(ctx, ln.laneId).fill);
     const x = pos.x + ln.cx - ln.shapeWidth / 2;
     const y = pos.y + ln.cy - ln.shapeHeight / 2;
     const name = step ? step.name.trim() || "Untitled" : "";
@@ -510,7 +514,7 @@ function addNodes(d: Drawing, ctx: XlsxContext): void {
           `<a:gd name="adj" fmla="val ${Math.round((8 / Math.min(ln.shapeWidth, ln.shapeHeight)) * 100000)}"/>`,
         ),
         solid(SURFACE),
-        outline(2, colour),
+        outline(missing ? 3 : 2, colour),
         textBody([name], { size: 9, inset: 6 }),
       );
     } else {
@@ -523,7 +527,7 @@ function addNodes(d: Drawing, ctx: XlsxContext): void {
         ln.shapeHeight,
         preset(shape),
         solid(SURFACE),
-        outline(ln.kind === "end" ? 4 : 2, colour),
+        outline(ln.kind === "end" ? 4 : missing ? 3 : 2, colour),
         gateway ? textBody(["+"], { size: 14, bold: true }) : "",
       );
     }

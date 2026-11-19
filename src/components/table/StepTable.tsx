@@ -519,6 +519,18 @@ export function StepTable({ process, flags, focus }: Props) {
                   />
                 </Td>
                 <Td>
+                  <div className="flex h-full items-center justify-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Missing information"
+                      title="Mark this step as missing information: it is outlined in red on the map"
+                      className="h-3.5 w-3.5 accent-[var(--color-danger)]"
+                      checked={!!step.missingInfo}
+                      onChange={(e) => patchStep(step, { missingInfo: e.target.checked })}
+                    />
+                  </div>
+                </Td>
+                <Td>
                   <div className="flex items-center justify-end gap-0.5 pr-1">
                     {(() => {
                       const merges = teams.length ? mergeCandidates(master, step.id) : [];

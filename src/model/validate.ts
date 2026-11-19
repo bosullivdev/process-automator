@@ -22,7 +22,8 @@ export type FlagCode =
   | "unreachable"
   | "dead-end"
   | "orphan"
-  | "unassigned-owner";
+  | "unassigned-owner"
+  | "missing-info";
 
 export interface Flag {
   severity: Severity;
@@ -213,6 +214,14 @@ export function validateProcess(
         code: "unassigned-owner",
         stepId: s.id,
         message: `Step ${label(s.id)} has no owner.`,
+      });
+    }
+    if (s.missingInfo) {
+      flags.push({
+        severity: "warning",
+        code: "missing-info",
+        stepId: s.id,
+        message: `Step ${label(s.id)} is marked as missing information.`,
       });
     }
 

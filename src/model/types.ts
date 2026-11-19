@@ -67,6 +67,8 @@ export interface Step {
   hasControl?: boolean;
   /** Reference of that control in the user's own controls document, free text. */
   controlRef?: string;
+  /** The user has marked the step as still missing information; it is outlined in red. */
+  missingInfo?: boolean;
   startKind?: StartKind; // start only
   endKind?: EndKind; // end only
 }

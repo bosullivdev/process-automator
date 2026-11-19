@@ -27,16 +27,26 @@ describe("controls on a step", () => {
     const stale = { ...plain, hasControl: false, controlRef: "FIN-012" };
     expect(sizeStep(stale, "horizontal").text.control).toBeUndefined();
     const csv = processToCsv(process([stale]), [ops]);
-    expect(csv.split("\r\n")[1]).toBe("1,Reconcile,Ops,task,,,,,,,");
+    expect(csv.split("\r\n")[1]).toBe("1,Reconcile,Ops,task,,,,,,,,");
   });
 
-  it("exports the tick and the reference as the last two CSV columns", () => {
+  it("exports the tick and the reference as CSV columns after the notes", () => {
     const lines = processToCsv(process([ticked, { ...referenced, id: "b", displayNo: 2 }]), [
       ops,
     ]).split("\r\n");
-    expect(lines[0].endsWith(",Notes,Control,Control ref")).toBe(true);
-    expect(lines[1]).toBe("1,Reconcile,Ops,task,,,,,,Yes,");
-    expect(lines[2]).toBe("2,Reconcile,Ops,task,,,,,,Yes,FIN-012");
+    expect(lines[0].endsWith(",Notes,Control,Control ref,Missing info")).toBe(true);
+    expect(lines[1]).toBe("1,Reconcile,Ops,task,,,,,,Yes,,");
+    expect(lines[2]).toBe("2,Reconcile,Ops,task,,,,,,Yes,FIN-012,");
+  });
+
+  it("exports a step marked as missing information in the last CSV column, and keeps the mark on import", () => {
+    const marked = { ...plain, missingInfo: true };
+    const lines = processToCsv(process([marked]), [ops]).split("\r\n");
+    expect(lines[1]).toBe("1,Reconcile,Ops,task,,,,,,,,Yes");
+    const ws = workspace([ops], [process([marked, { ...plain, id: "b", displayNo: 2 }])]);
+    const back = migrate(JSON.parse(JSON.stringify(ws)));
+    expect(back.processes[0].steps[0].missingInfo).toBe(true);
+    expect(back.processes[0].steps[1].missingInfo).toBeUndefined();
   });
 
   it("survives export and import, and files without the fields still load", () => {

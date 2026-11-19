@@ -11,6 +11,7 @@ export type ColumnKey =
   | "contributors"
   | "teams"
   | "notes"
+  | "missing"
   | "actions";
 
 export interface ColumnDef {
@@ -34,6 +35,7 @@ export const COLUMNS: readonly ColumnDef[] = [
   { key: "contributors", label: "Contributors", width: 160, min: 100 },
   { key: "teams", label: "Teams", width: 140, min: 90 },
   { key: "notes", label: "Notes", width: 200, min: 100 },
+  { key: "missing", label: "Missing info", width: 96, min: 96, fixed: true },
   { key: "actions", label: "", width: 64, min: 64, fixed: true },
 ];
 

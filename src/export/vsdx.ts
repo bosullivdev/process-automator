@@ -272,7 +272,9 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
     const centre = toPage(c, { x: pos.x + ln.cx, y: pos.y + ln.cy });
     const colour = laneColour(ln.laneId);
     const outside = ln.kind !== "task";
-    const lineWeight = ln.kind === "end" ? 4 / 96 : 2 / 96;
+    // A step marked as missing information is outlined in red, as on the map.
+    const missing = !!step?.missingInfo;
+    const lineWeight = (ln.kind === "end" ? 4 : missing ? 3 : 2) / 96;
 
     let geometry: string;
     switch (ln.kind) {
@@ -296,7 +298,7 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
     const labelH = Math.max((ln.text.nameLines.length * 14) / PX + 0.1, 0.25);
     const body =
       xform(centre.x, centre.y, sw, sh) +
-      cell("LineColor", colour.fill) +
+      cell("LineColor", missing ? "#dc2626" : colour.fill) +
       cell("LineWeight", lineWeight) +
       cell("FillForegnd", SURFACE) +
       (ln.kind === "task" ? cell("Rounding", 8 / 96) : "") +
@@ -329,6 +331,7 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
               "Control reference",
               step.hasControl ? (step.controlRef ?? "").trim() : "",
             ],
+            ["MissingInfo", "Missing information", step.missingInfo ? "Yes" : ""],
           ])
         : "") +
       (text ? `<Text>${esc(text)}</Text>` : "");
