@@ -74,6 +74,16 @@ a static site.
   legend lists team colours. Teams are not lanes: a "Management accountant"
   lane holds steps from every team's variant. A step or link with no team
   tags applies to every team.
+- **Compare teams**: Team menu → "Compare teams…" opens a panel beside the
+  table and map showing how alike the teams' routes through the active process
+  are (the share of steps, owners and arrows each pair has in common) and a
+  list of edits that would bring them closer, the most effective first: merge
+  two teams' copies of the same step, add a step most teams do to the teams
+  that skip it, remove a step few teams do, or have a shared step done by the
+  same parties for every team. "Show step" selects the step; "Apply" makes the
+  change as one undoable edit. Suggestions follow what most teams do and match
+  steps by name and structure; they cannot tell which way is better, and they
+  do not suggest reordering steps.
 - **Next**: a searchable multi-select of steps in the same process with a
   "Create new step" entry. Decisions get a label and a default toggle per
   outcome, and every link gets a team scope once teams exist.

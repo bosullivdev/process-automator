@@ -6,6 +6,7 @@ import { MapView } from "./components/map/MapView";
 import { PartySheet } from "./components/PartySheet";
 import { TeamSheet } from "./components/TeamSheet";
 import { TeamMenu } from "./components/TeamMenu";
+import { CompareTeamsPanel } from "./components/CompareTeamsPanel";
 import { ProcessSwitcher } from "./components/ProcessSwitcher";
 import { ExportMenu, ImportButton, StorageNotice } from "./components/ExportMenu";
 import { Toaster } from "./components/ui/Toaster";
@@ -33,6 +34,7 @@ export default function App() {
   const [tab, setTab] = useState<"table" | "map">("table");
   const [partiesOpen, setPartiesOpen] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const narrow = useMediaQuery(NARROW_QUERY);
   useApplyTheme();
 
@@ -177,7 +179,7 @@ export default function App() {
       >
         <span className="font-semibold whitespace-nowrap">Process Mapper</span>
         <ProcessSwitcher />
-        <TeamMenu onManage={() => setTeamsOpen(true)} />
+        <TeamMenu onManage={() => setTeamsOpen(true)} onCompare={() => setCompareOpen(true)} />
         <div className="flex-1" />
         <button className="btn" aria-label="Parties" onClick={() => setPartiesOpen(true)}>
           Parties
@@ -275,6 +277,11 @@ export default function App() {
       )}
       <PartySheet open={partiesOpen} onClose={() => setPartiesOpen(false)} />
       <TeamSheet open={teamsOpen} onClose={() => setTeamsOpen(false)} />
+      <CompareTeamsPanel
+        open={compareOpen}
+        process={process}
+        onClose={() => setCompareOpen(false)}
+      />
       <Toaster />
     </div>
   );

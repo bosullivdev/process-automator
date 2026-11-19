@@ -18,6 +18,7 @@ import {
 } from "../model/party";
 import { assignOwners as assignOwnersPure } from "../model/share";
 import { mergeWorkspace } from "../model/import";
+import { applyAlignment as applyAlignmentPure, type AlignAction } from "../model/align";
 import {
   mergeSteps as mergeStepsPure,
   setOwnersForTeam as setOwnersForTeamPure,
@@ -133,6 +134,8 @@ export interface StoreState extends DocState {
   setOwnersForTeam: (processId: string, stepId: string, partyIds: string[], teamId: string) => void;
   /** Fold one step (typically a team's copy) into another, keeping both teams' routes. */
   mergeSteps: (processId: string, keepId: string, dropId: string) => void;
+  /** Make the edit a "compare teams" suggestion describes, as one undoable step. */
+  applyAlignment: (processId: string, action: AlignAction) => void;
   setStepNext: (processId: string, stepId: string, next: NextLink[]) => void;
   /** Scope a step to some teams; an empty list means every team. */
   setStepTeams: (processId: string, stepId: string, teamIds: string[]) => void;
@@ -350,6 +353,22 @@ export const useStore = create<StoreState>()(
               d.teams.map((t) => t.id),
             );
           }),
+        applyAlignment: (processId, action) => {
+          edit((d) => {
+            const idx = d.processes.findIndex((p) => p.id === processId);
+            if (idx < 0) return;
+            d.processes[idx] = applyAlignmentPure(
+              d.processes[idx],
+              action,
+              d.teams.map((t) => t.id),
+            );
+          });
+          // A merged or removed step can no longer be the selection.
+          const selected = get().selectedStepId;
+          const proc = get().processes.find((p) => p.id === processId);
+          if (selected && proc && !proc.steps.some((s) => s.id === selected))
+            set({ selectedStepId: null });
+        },
         setStepNext: (processId, stepId, next) =>
           edit((d) => {
             const s = findProcess(d, processId)?.steps.find((x) => x.id === stepId);

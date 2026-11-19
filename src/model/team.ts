@@ -133,17 +133,21 @@ function linkScope(ids: readonly string[] | null | undefined): string[] | undefi
 }
 
 /** A link with the team removed from its scope, or null when the link would apply to nobody. */
-function linkWithout(link: NextLink, teamId: string, all: readonly string[]): NextLink | null {
+export function linkWithout(
+  link: NextLink,
+  teamId: string,
+  all: readonly string[],
+): NextLink | null {
   const scope = scopeWithout(link.teamIds, teamId, all);
   return scope ? tidyLink({ ...link, teamIds: scope }) : null;
 }
 
-function linkWith(link: NextLink, teamId: string, all: readonly string[]): NextLink {
+export function linkWith(link: NextLink, teamId: string, all: readonly string[]): NextLink {
   return tidyLink({ ...link, teamIds: scopeWith(link.teamIds, teamId, all) });
 }
 
 /** Drop undefined and empty fields so links compare cleanly. */
-function tidyLink(l: NextLink): NextLink {
+export function tidyLink(l: NextLink): NextLink {
   const out: NextLink = { targetId: l.targetId };
   if (l.label !== undefined) out.label = l.label;
   if (l.isDefault) out.isDefault = true;

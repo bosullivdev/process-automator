@@ -5,6 +5,7 @@ import { PartySwatch } from "./ui/PartySwatch";
 
 interface Props {
   onManage: () => void;
+  onCompare: () => void;
 }
 
 /**
@@ -12,7 +13,7 @@ interface Props {
  * fading the rest of the process and showing the team's variant alone, and
  * open the team registry.
  */
-export function TeamMenu({ onManage }: Props) {
+export function TeamMenu({ onManage, onCompare }: Props) {
   const teams = useStore((s) => s.teams);
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
@@ -98,6 +99,17 @@ export function TeamMenu({ onManage }: Props) {
             </button>
           </div>
           <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />
+          <button
+            role="menuitem"
+            className="menu-item"
+            title="See how alike the teams' variants are and what would bring them closer"
+            onClick={() => {
+              setOpen(false);
+              onCompare();
+            }}
+          >
+            Compare teams…
+          </button>
           <button
             role="menuitem"
             className="menu-item"
