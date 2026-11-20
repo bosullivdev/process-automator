@@ -47,6 +47,7 @@ const TEXT = "#18181b";
 const MUTED = "#71717a";
 const BORDER = "#e4e4e7";
 const SURFACE = "#ffffff";
+const DANGER = "#dc2626";
 
 export function esc(s: string): string {
   return s
@@ -300,7 +301,7 @@ function nodeShapes(c: Ctx, ctx: VsdxContext, shapeIdByNode: Map<string, number>
     const labelH = Math.max((ln.text.nameLines.length * 14) / PX + 0.1, 0.25);
     const body =
       xform(centre.x, centre.y, sw, sh) +
-      cell("LineColor", missing ? "#dc2626" : colour.fill) +
+      cell("LineColor", missing ? DANGER : colour.fill) +
       cell("LineWeight", lineWeight) +
       cell("FillForegnd", SURFACE) +
       (ln.kind === "task" ? cell("Rounding", 8 / 96) : "") +
@@ -533,9 +534,12 @@ function legendRows(ctx: VsdxContext): {
 export function buildVsdxPage(ctx: VsdxContext): { xml: string; width: number; height: number } {
   const { process, layout } = ctx;
   const legend = legendRows(ctx);
+  // The red outline is explained only when the map has one.
+  const hasMissing = process.steps.some((s) => s.missingInfo);
   const legendH =
     (legend.parties.length ? LEGEND_GAP + LEGEND_ROW * legend.parties.length : 0) +
-    (legend.teams.length ? LEGEND_GAP + LEGEND_ROW * legend.teams.length : 0);
+    (legend.teams.length ? LEGEND_GAP + LEGEND_ROW * legend.teams.length : 0) +
+    (hasMissing ? LEGEND_GAP + LEGEND_ROW : 0);
   const contentW = Math.max(layout.width / PX, 4);
   const contentH = layout.height / PX;
   const pageW = contentW + MARGIN * 2;
@@ -612,6 +616,29 @@ export function buildVsdxPage(ctx: VsdxContext): { xml: string; width: number; h
       );
       textShape(c, MARGIN + 0.26, y + LEGEND_ROW - 0.03, contentW - 0.3, 0.2, row.name, 9, TEXT);
     }
+    y -= LEGEND_GAP;
+  }
+  if (hasMissing) {
+    textShape(c, MARGIN, y + 0.22, 3, 0.2, "KEY", 7, MUTED, true);
+    y -= LEGEND_ROW;
+    addShape(
+      c,
+      xform(MARGIN + 0.1, y + LEGEND_ROW / 2, 0.2, 0.14) +
+        cell("LineColor", DANGER) +
+        cell("LineWeight", 2.5 / 96) +
+        cell("FillForegnd", SURFACE) +
+        relGeometry(RECT),
+    );
+    textShape(
+      c,
+      MARGIN + 0.26,
+      y + LEGEND_ROW - 0.03,
+      contentW - 0.3,
+      0.2,
+      "Red outline: missing information",
+      9,
+      TEXT,
+    );
   }
 
   const xml =

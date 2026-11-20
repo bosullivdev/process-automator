@@ -21,6 +21,10 @@ export interface ExportContext {
 const PAD = 32;
 const TITLE_H = 64;
 const LEGEND_ROW = 24;
+/** Space between the map and the key, from a section heading to its first row, and between sections. */
+const LEGEND_TOP = 20;
+const LEGEND_HEAD = 20;
+const LEGEND_GAP = 14;
 
 /** Resolve CSS custom properties used in the map into literal values. */
 function cssVars(theme: "light" | "dark"): Record<string, string> {
@@ -140,11 +144,57 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
     ? teams.map((t) => ({ name: t.name, colour: resolveColour(t.colourIndex, theme).fill }))
     : [];
 
+  // The key under the map: one section per kind of thing, stacked, each placed
+  // by a running offset so a section can never land on the one above it. Text
+  // sits on explicit baselines because PDF output ignores dominant-baseline.
+  const textAttrs = `font-size="12" fill="${vars["--text"]}"`;
+  const sections: Array<{ heading: string; rows: string[] }> = [];
+  if (lanes.length)
+    sections.push({
+      heading: "PARTIES",
+      rows: lanes.map(
+        (l) =>
+          `<circle cx="9" cy="9" r="9" fill="${l.colour}"/>` +
+          (l.initials
+            ? `<text x="9" y="12" text-anchor="middle" font-size="8" font-weight="700" fill="${l.text}">${esc(l.initials)}</text>`
+            : "") +
+          `<text x="26" y="13.5" ${textAttrs}>${esc(l.name)}</text>`,
+      ),
+    });
+  if (teamRows.length)
+    sections.push({
+      heading: "TEAMS (arrow colours)",
+      rows: teamRows.map(
+        (t) =>
+          `<line x1="0" y1="9" x2="18" y2="9" stroke="${t.colour}" stroke-width="2.5"/>` +
+          `<text x="26" y="13.5" ${textAttrs}>${esc(t.name)}</text>`,
+      ),
+    });
+  // Explain the red outline only when the map has one.
+  if (process.steps.some((s) => s.missingInfo))
+    sections.push({
+      heading: "KEY",
+      rows: [
+        `<rect x="0" y="2" width="18" height="14" rx="3" fill="${vars["--surface"]}" stroke="${vars["--color-danger"]}" stroke-width="2.5"/>` +
+          `<text x="26" y="13.5" ${textAttrs}>Red outline: missing information</text>`,
+      ],
+    });
+
+  const mapBottom = PAD + TITLE_H + layout.height;
+  let legend = "";
+  let legendH = 0;
+  for (const sec of sections) {
+    const top = mapBottom + LEGEND_TOP + legendH;
+    legend += `<text x="${PAD}" y="${top + 10}" font-size="11" font-weight="600" fill="${vars["--text-muted"]}">${esc(sec.heading)}</text>`;
+    sec.rows.forEach((row, i) => {
+      legend += `<g transform="translate(${PAD}, ${top + LEGEND_HEAD + i * LEGEND_ROW})">${row}</g>`;
+    });
+    legendH += LEGEND_HEAD + sec.rows.length * LEGEND_ROW + LEGEND_GAP;
+  }
+  if (sections.length) legendH += LEGEND_TOP - LEGEND_GAP;
+
   const width = Math.max(layout.width, 420) + PAD * 2;
-  const partiesH = lanes.length ? LEGEND_ROW * lanes.length + 16 : 0;
-  const teamsH = teamRows.length ? LEGEND_ROW * teamRows.length + 24 : 0;
-  const legendH = partiesH + teamsH;
-  const height = PAD + TITLE_H + layout.height + 16 + legendH + PAD;
+  const height = mapBottom + legendH + PAD;
   const meta = [
     process.owner && `Owner: ${process.owner}`,
     process.version && `Version: ${process.version}`,
@@ -153,30 +203,6 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
   ]
     .filter(Boolean)
     .join("   ·   ");
-
-  const legend = lanes
-    .map(
-      (l, i) =>
-        `<g transform="translate(${PAD}, ${PAD + TITLE_H + layout.height + 24 + i * LEGEND_ROW})">` +
-        `<circle cx="9" cy="9" r="9" fill="${l.colour}"/>` +
-        (l.initials
-          ? `<text x="9" y="9" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="700" fill="${l.text}">${esc(l.initials)}</text>`
-          : "") +
-        `<text x="26" y="9" dominant-baseline="central" font-size="12" fill="${vars["--text"]}">${esc(l.name)}</text></g>`,
-    )
-    .join("");
-  const teamsTop = PAD + TITLE_H + layout.height + partiesH + 10;
-  const teamLegend = teamRows.length
-    ? `<text x="${PAD}" y="${teamsTop}" font-size="11" font-weight="600" fill="${vars["--text-muted"]}">TEAMS (arrow colours)</text>` +
-      teamRows
-        .map(
-          (t, i) =>
-            `<g transform="translate(${PAD}, ${teamsTop + 14 + i * LEGEND_ROW})">` +
-            `<line x1="0" y1="9" x2="18" y2="9" stroke="${t.colour}" stroke-width="2.5"/>` +
-            `<text x="26" y="9" dominant-baseline="central" font-size="12" fill="${vars["--text"]}">${esc(t.name)}</text></g>`,
-        )
-        .join("")
-    : "";
 
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, system-ui, sans-serif">` +
@@ -189,11 +215,7 @@ export async function buildExportSvg(ctx: ExportContext): Promise<string> {
       : "") +
     `</g>` +
     `<g transform="translate(${PAD}, ${PAD + TITLE_H})">${defs}${content}</g>` +
-    (lanes.length
-      ? `<text x="${PAD}" y="${PAD + TITLE_H + layout.height + 10}" font-size="11" font-weight="600" fill="${vars["--text-muted"]}">PARTIES</text>`
-      : "") +
     legend +
-    teamLegend +
     `</svg>`;
   return replaceVars(svg, vars);
 }

@@ -71,12 +71,6 @@ export function MapNode({
       : colours.owner.fill;
   const strokeWidth = selected || missing ? 3 : 2;
   const fill = "var(--surface)";
-  const dash =
-    colours.owner.pattern === "stripe"
-      ? "6 3"
-      : colours.owner.pattern === "dot"
-        ? "2 3"
-        : undefined;
   const sev = flags?.some((f) => f.severity === "error")
     ? "error"
     : flags?.length
@@ -102,7 +96,9 @@ export function MapNode({
       ? "Parallel split"
       : "Parallel join";
 
-  const common = { fill, stroke, strokeWidth, strokeDasharray: dash };
+  // Outlines are always solid: the stripe or dot pattern of a party beyond the
+  // twelfth shows on its lane header only, so steps look alike in every lane.
+  const common = { fill, stroke, strokeWidth };
 
   let shape: React.ReactNode;
   switch (kind) {
