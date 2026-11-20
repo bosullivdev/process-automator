@@ -145,6 +145,32 @@ their own route. "All maps as Excel (.xlsx)" writes the same thing
 for every process in the workspace that has steps, one sheet each, in a single
 workbook, using the orientation, shape mode and detail level currently shown.
 
+**Export → Custom export…** opens a dialog for shaping the output yourself.
+Tick any mix of:
+
+- **Format**: Visio, Excel, PDF, SVG, PNG, and the steps table as CSV. Several
+  can be ticked at once.
+- **Processes**: any of the workspace's processes, not just the open one.
+- **Teams** (when the workspace has teams): the whole process with every team;
+  the ticked teams **together on one map**, which keeps the steps and arrows at
+  least one of them uses and colours only the arrows that tell those teams
+  apart; or **a map for each ticked team**, each team's variant as a plain
+  process.
+- **Files**: everything in one file per format (a page per map in Visio and
+  PDF, a sheet per map in Excel), or a separate file for each map. SVG, PNG
+  and CSV hold one map each, so they are always a file per map. When there is
+  more than one file they can be bundled into a single .zip, or downloaded one
+  after another (the browser may ask once to allow several downloads).
+- **Look**: orientation, simple or BPMN shapes and detail level, starting from
+  what the map shows now.
+
+The dialog lists the files it will produce before you export. So "every map in
+one Visio file, showing just North and South" is: Visio, all processes, "Ticked
+teams together" with North and South, "Everything in one file". Processes with
+no steps (or none for the ticked teams) are left out. Maps are drawn without
+the current selection or team highlight; the format and file choices are
+remembered in this browser.
+
 ## Development
 
 ```sh

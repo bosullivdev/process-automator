@@ -13,6 +13,7 @@ import { buildLayoutGraph } from "../graph/build-graph";
 import { requestLayout } from "../hooks/useLayout";
 import { useResolvedTheme } from "../hooks/useTheme";
 import { Popover } from "./ui/Popover";
+import { ExportDialog } from "./ExportDialog";
 import { toast } from "./ui/toast";
 import type { Process } from "../model/types";
 import { processForTeam, withoutTeamScopes, type TeamFocus } from "../model/team";
@@ -29,6 +30,7 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [custom, setCustom] = useState(false);
   const theme = useResolvedTheme();
   const parties = useStore((s) => s.parties);
   const allTeams = useStore((s) => s.teams);
@@ -147,6 +149,18 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
       </button>
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} width={220}>
         <div role="menu" className="flex flex-col">
+          <button
+            role="menuitem"
+            className="menu-item"
+            title="Choose the formats, processes and teams, and whether it all goes in one file or several"
+            onClick={() => {
+              setOpen(false);
+              setCustom(true);
+            }}
+          >
+            Custom export…
+          </button>
+          <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />
           <button role="menuitem" className="menu-item" onClick={() => run("json")}>
             Workspace JSON
           </button>
@@ -193,6 +207,7 @@ export function ExportMenu({ process, layout, graph, focus }: Props) {
           </button>
         </div>
       </Popover>
+      {custom && <ExportDialog onClose={() => setCustom(false)} />}
     </>
   );
 }

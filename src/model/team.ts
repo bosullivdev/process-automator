@@ -183,6 +183,69 @@ export function processForTeam(process: Process, teamId: string): Process {
 }
 
 /**
+ * The process as a chosen set of teams runs it, on one map: every step at
+ * least one of them does, with the links at least one of them travels. Team
+ * tags are narrowed to the chosen teams, and a tag that names all of them is
+ * dropped, so "every chosen team" reads the same as "every team" does on the
+ * whole process. Hand the result to the map with just these teams as its team
+ * list. With one team this is that team's variant as a plain process.
+ */
+export function processForTeams(process: Process, teamIds: readonly string[]): Process {
+  const chosen = [...new Set(teamIds)];
+  /** The chosen teams each kept step applies to. */
+  const teamsOf = new Map<string, string[]>();
+  for (const s of process.steps) {
+    const mine = chosen.filter((id) => stepInTeam(s, id));
+    if (mine.length) teamsOf.set(s.id, mine);
+  }
+  return {
+    ...process,
+    steps: process.steps
+      .filter((s) => teamsOf.has(s.id))
+      .map((s) => {
+        const mine = teamsOf.get(s.id)!;
+        const doing = stepParties(s).filter(
+          (p) => p === null || mine.some((t) => partyInTeam(s, p, t)),
+        );
+        const unassigned = doing.length === 0 || doing[0] === null;
+        const ownerId = unassigned ? null : doing[0];
+        const coOwnerIds = unassigned ? [] : doing.slice(1).filter((p): p is string => p !== null);
+        const ownerTeams: Record<string, string[]> = {};
+        for (const p of ownerId ? [ownerId, ...coOwnerIds] : []) {
+          const scope = s.ownerTeams?.[p];
+          if (!scope?.length) continue;
+          const narrowed = scope.filter((id) => mine.includes(id));
+          if (!mine.every((id) => narrowed.includes(id))) ownerTeams[p] = narrowed;
+        }
+        const out: Step = {
+          ...s,
+          ownerId,
+          coOwnerIds,
+          teamIds: normaliseScope(mine, chosen),
+          next: s.next
+            .filter((l) => {
+              const target = teamsOf.get(l.targetId);
+              return !!target && mine.some((t) => linkInTeam(l, t) && target.includes(t));
+            })
+            .map((l) => {
+              const link: NextLink = { ...l };
+              const scope = normaliseScope(
+                (l.teamIds ?? []).filter((id) => chosen.includes(id)),
+                chosen,
+              );
+              if (scope.length) link.teamIds = scope;
+              else delete link.teamIds;
+              return link;
+            }),
+        };
+        if (Object.keys(ownerTeams).length) out.ownerTeams = ownerTeams;
+        else delete out.ownerTeams;
+        return out;
+      }),
+  };
+}
+
+/**
  * A team's variant as a process in its own right: the same steps and links
  * with every team tag removed. Shown on its own, there is no other team to
  * tell it apart from, so the map and exports draw no team labels, no

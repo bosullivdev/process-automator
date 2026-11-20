@@ -29,6 +29,8 @@ export interface VsdxContext {
   layout: LayoutResult;
   /** Extra title-block line when one team's variant is shown. */
   teamLine?: string;
+  /** Name of this map's page (Visio) or sheet (Excel) in a file that holds several. */
+  pageName?: string;
 }
 
 const NS = "http://schemas.microsoft.com/office/visio/2012/main";
@@ -711,47 +713,66 @@ function documentXml(): string {
   );
 }
 
-function pagesXml(name: string, width: number, height: number): string {
+interface PageInfo {
+  name: string;
+  width: number;
+  height: number;
+}
+
+function pagesXml(pages: readonly PageInfo[]): string {
+  const body = pages
+    .map(
+      ({ name, width, height }, i) =>
+        `<Page ID="${i}" NameU="${esc(name)}" Name="${esc(name)}" ViewScale="1" ViewCenterX="${num(width / 2)}" ViewCenterY="${num(height / 2)}">` +
+        `<PageSheet LineStyle="0" FillStyle="0" TextStyle="0">` +
+        cell("PageWidth", width) +
+        cell("PageHeight", height) +
+        cell("ShdwOffsetX", 0.125) +
+        cell("ShdwOffsetY", -0.125) +
+        cell("PageScale", 1, undefined, "IN") +
+        cell("DrawingScale", 1, undefined, "IN") +
+        cell("DrawingSizeType", 3) +
+        cell("DrawingScaleType", 0) +
+        cell("InhibitSnap", 0) +
+        cell("PageLockReplace", 0) +
+        cell("PageLockDuplicate", 0) +
+        cell("UIVisibility", 0) +
+        cell("ShdwType", 0) +
+        cell("ShdwObliqueAngle", 0) +
+        cell("ShdwScaleFactor", 1) +
+        cell("DrawingResizeType", 2) +
+        cell("PageShapeSplit", 1) +
+        cell("PrintPageOrientation", width > height ? 2 : 1) +
+        `</PageSheet>` +
+        `<Rel r:id="rId${i + 1}"/>` +
+        `</Page>`,
+    )
+    .join("");
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
-    `<Pages xmlns="${NS}" xmlns:r="${NS_R}" xml:space="preserve">` +
-    `<Page ID="0" NameU="${esc(name)}" Name="${esc(name)}" ViewScale="1" ViewCenterX="${num(width / 2)}" ViewCenterY="${num(height / 2)}">` +
-    `<PageSheet LineStyle="0" FillStyle="0" TextStyle="0">` +
-    cell("PageWidth", width) +
-    cell("PageHeight", height) +
-    cell("ShdwOffsetX", 0.125) +
-    cell("ShdwOffsetY", -0.125) +
-    cell("PageScale", 1, undefined, "IN") +
-    cell("DrawingScale", 1, undefined, "IN") +
-    cell("DrawingSizeType", 3) +
-    cell("DrawingScaleType", 0) +
-    cell("InhibitSnap", 0) +
-    cell("PageLockReplace", 0) +
-    cell("PageLockDuplicate", 0) +
-    cell("UIVisibility", 0) +
-    cell("ShdwType", 0) +
-    cell("ShdwObliqueAngle", 0) +
-    cell("ShdwScaleFactor", 1) +
-    cell("DrawingResizeType", 2) +
-    cell("PageShapeSplit", 1) +
-    cell("PrintPageOrientation", width > height ? 2 : 1) +
-    `</PageSheet>` +
-    `<Rel r:id="rId1"/>` +
-    `</Page></Pages>`
+    `<Pages xmlns="${NS}" xmlns:r="${NS_R}" xml:space="preserve">${body}</Pages>`
   );
 }
 
-const CONTENT_TYPES =
-  `<?xml version="1.0" encoding="utf-8"?>` +
-  `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-  `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
-  `<Default Extension="xml" ContentType="application/xml"/>` +
-  `<Override PartName="/visio/document.xml" ContentType="application/vnd.ms-visio.drawing.main+xml"/>` +
-  `<Override PartName="/visio/pages/pages.xml" ContentType="application/vnd.ms-visio.pages+xml"/>` +
-  `<Override PartName="/visio/pages/page1.xml" ContentType="application/vnd.ms-visio.page+xml"/>` +
-  `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
-  `<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>` +
-  `</Types>`;
+function contentTypes(pageCount: number): string {
+  const pages = Array.from(
+    { length: pageCount },
+    (_, i) =>
+      `<Override PartName="/visio/pages/page${i + 1}.xml" ContentType="application/vnd.ms-visio.page+xml"/>`,
+  ).join("");
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+    `<Default Extension="xml" ContentType="application/xml"/>` +
+    `<Override PartName="/visio/document.xml" ContentType="application/vnd.ms-visio.drawing.main+xml"/>` +
+    `<Override PartName="/visio/pages/pages.xml" ContentType="application/vnd.ms-visio.pages+xml"/>` +
+    pages +
+    `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
+    `<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>` +
+    `</Types>`
+  );
+}
 
 const ROOT_RELS =
   `<?xml version="1.0" encoding="utf-8"?>` +
@@ -767,11 +788,17 @@ const DOCUMENT_RELS =
   `<Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="pages/pages.xml"/>` +
   `</Relationships>`;
 
-const PAGES_RELS =
-  `<?xml version="1.0" encoding="utf-8"?>` +
-  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-  `<Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/page" Target="page1.xml"/>` +
-  `</Relationships>`;
+function pagesRels(pageCount: number): string {
+  const rels = Array.from(
+    { length: pageCount },
+    (_, i) =>
+      `<Relationship Id="rId${i + 1}" Type="http://schemas.microsoft.com/visio/2010/relationships/page" Target="page${i + 1}.xml"/>`,
+  ).join("");
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`
+  );
+}
 
 function coreXml(title: string, now: string): string {
   return (
@@ -790,31 +817,76 @@ const APP_XML =
   `<Application>Microsoft Visio</Application><AppVersion>16.0000</AppVersion>` +
   `</Properties>`;
 
-/** All package parts by path, so tests can inspect them without unzipping. */
+/**
+ * A page name for each map. Visio wants them to differ (ignoring case) and
+ * keeps them to 31 characters, so repeats get a number, trimmed to fit.
+ */
+export function pageNames(names: readonly string[]): string[] {
+  const taken = new Set<string>();
+  return names.map((raw) => {
+    const base = raw.replace(/\s+/g, " ").trim().slice(0, 31).trim() || "Process map";
+    let name = base;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) {
+      const suffix = ` (${n})`;
+      name = base.slice(0, 31 - suffix.length).trim() + suffix;
+    }
+    taken.add(name.toLowerCase());
+    return name;
+  });
+}
+
+/**
+ * All package parts by path, so tests can inspect them without unzipping: one
+ * drawing with a page per map, in the order given.
+ */
+export function buildVsdxDocumentParts(
+  maps: readonly VsdxContext[],
+  title = maps[0]?.process.name ?? "Process map",
+  now = new Date().toISOString(),
+): Record<string, string> {
+  if (maps.length === 0) throw new Error("There is no process map to export.");
+  const pages = maps.map((m) => buildVsdxPage(m));
+  const names = pageNames(maps.map((m, i) => m.pageName ?? `Page-${i + 1}`));
+  const parts: Record<string, string> = {
+    "[Content_Types].xml": contentTypes(pages.length),
+    "_rels/.rels": ROOT_RELS,
+    "docProps/core.xml": coreXml(title, now),
+    "docProps/app.xml": APP_XML,
+    "visio/document.xml": documentXml(),
+    "visio/_rels/document.xml.rels": DOCUMENT_RELS,
+    "visio/pages/pages.xml": pagesXml(
+      pages.map((p, i) => ({ name: names[i], width: p.width, height: p.height })),
+    ),
+    "visio/pages/_rels/pages.xml.rels": pagesRels(pages.length),
+  };
+  pages.forEach((p, i) => {
+    parts[`visio/pages/page${i + 1}.xml`] = p.xml;
+  });
+  return parts;
+}
+
+/** The parts of a one-page drawing for a single process map. */
 export function buildVsdxParts(
   ctx: VsdxContext,
   now = new Date().toISOString(),
 ): Record<string, string> {
-  const page = buildVsdxPage(ctx);
-  return {
-    "[Content_Types].xml": CONTENT_TYPES,
-    "_rels/.rels": ROOT_RELS,
-    "docProps/core.xml": coreXml(ctx.process.name, now),
-    "docProps/app.xml": APP_XML,
-    "visio/document.xml": documentXml(),
-    "visio/_rels/document.xml.rels": DOCUMENT_RELS,
-    "visio/pages/pages.xml": pagesXml("Page-1", page.width, page.height),
-    "visio/pages/_rels/pages.xml.rels": PAGES_RELS,
-    "visio/pages/page1.xml": page.xml,
-  };
+  return buildVsdxDocumentParts([ctx], ctx.process.name, now);
 }
 
-/** Zip the parts into a .vsdx file. */
-export function buildVsdx(ctx: VsdxContext): Uint8Array {
-  const parts = buildVsdxParts(ctx);
+function zip(parts: Record<string, string>): Uint8Array {
   const files: Record<string, Uint8Array> = {};
   for (const [path, xml] of Object.entries(parts)) files[path] = strToU8(xml);
   return zipSync(files, { level: 6 });
+}
+
+/** A .vsdx file with one process map. */
+export function buildVsdx(ctx: VsdxContext): Uint8Array {
+  return zip(buildVsdxParts(ctx));
+}
+
+/** A .vsdx file with one page per process map, in the order given. */
+export function buildVsdxDocument(maps: readonly VsdxContext[], title?: string): Uint8Array {
+  return zip(buildVsdxDocumentParts(maps, title));
 }
 
 export function vsdxToBlob(bytes: Uint8Array): Blob {

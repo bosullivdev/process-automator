@@ -636,7 +636,7 @@ export function sheetNames(names: readonly string[]): string[] {
 export function buildWorkbookParts(maps: readonly XlsxContext[]): Record<string, string> {
   if (maps.length === 0) throw new Error("There is no process map to export.");
   const styles = new Styles();
-  const names = sheetNames(maps.map((m) => m.process.name));
+  const names = sheetNames(maps.map((m) => m.pageName ?? m.process.name));
   const parts: Record<string, string> = {};
   const overrides: string[] = [];
   const sheetList: string[] = [];
