@@ -8,6 +8,7 @@ import { TeamSheet } from "./components/TeamSheet";
 import { TeamMenu } from "./components/TeamMenu";
 import { CompareTeamsPanel } from "./components/CompareTeamsPanel";
 import { ProcessSwitcher } from "./components/ProcessSwitcher";
+import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
 import { ExportMenu, ImportButton, StorageNotice } from "./components/ExportMenu";
 import { Toaster } from "./components/ui/Toaster";
 import { buildLayoutGraph } from "./graph/build-graph";
@@ -178,6 +179,7 @@ export default function App() {
         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
       >
         <span className="font-semibold whitespace-nowrap">Process Mapper</span>
+        <WorkspaceSwitcher />
         <ProcessSwitcher />
         <TeamMenu onManage={() => setTeamsOpen(true)} onCompare={() => setCompareOpen(true)} />
         <div className="flex-1" />

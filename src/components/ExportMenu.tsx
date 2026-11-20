@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { LayoutGraph, LayoutResult } from "../graph/layout-types";
 import { getWorkspace, useStore } from "../store/workspace";
-import { hasUnsavedChanges } from "../store/autosave";
+import { createWorkspace, hasUnsavedChanges } from "../store/autosave";
 import { isWorkspaceEmpty } from "../model/workspace";
 import { exportWorkspaceJson, readWorkspaceFile } from "../export/json";
 import { exportProcessCsv } from "../export/csv";
@@ -204,17 +204,20 @@ export function ImportButton() {
   const [pending, setPending] = useState<{
     name: string;
     processes: number;
-    apply: () => void;
+    asNew: () => void;
     add: () => void;
   } | null>(null);
 
   const onFile = async (file: File) => {
     try {
       const ws = await readWorkspaceFile(file);
-      const apply = () => {
-        replaceWorkspace(ws);
-        useStore.temporal.getState().clear();
-        toast(`Imported "${ws.meta.name}".`);
+      // The file becomes a workspace of its own; the one that was open stays stored.
+      const asNew = () => {
+        createWorkspace(ws).then(
+          () => toast(`Imported "${ws.meta.name}" as a new workspace.`),
+          (err: unknown) =>
+            toast(`Import failed: ${err instanceof Error ? err.message : String(err)}`),
+        );
       };
       const add = () => {
         addWorkspace(ws);
@@ -223,8 +226,13 @@ export function ImportButton() {
       };
       const current = getWorkspace();
       if (!isWorkspaceEmpty(current) || hasUnsavedChanges())
-        setPending({ name: ws.meta.name, processes: ws.processes.length, apply, add });
-      else apply();
+        setPending({ name: ws.meta.name, processes: ws.processes.length, asNew, add });
+      else {
+        // Nothing here to keep: the file fills the blank workspace that is open.
+        replaceWorkspace(ws);
+        useStore.temporal.getState().clear();
+        toast(`Imported "${ws.meta.name}".`);
+      }
     } catch (err) {
       toast(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -256,10 +264,9 @@ export function ImportButton() {
         >
           <div className="menu flex w-[26rem] flex-col gap-3 p-4">
             <p className="text-sm">
-              Import <strong>{pending.name}</strong>: add its{" "}
-              {pending.processes === 1 ? "process" : `${pending.processes} processes`} to this
-              workspace, or replace the workspace with it? Replacing loses the current workspace
-              unless you export it first.
+              Import <strong>{pending.name}</strong>: open it as a new workspace, or add its{" "}
+              {pending.processes === 1 ? "process" : `${pending.processes} processes`} to this one?
+              Either way, nothing in this workspace is lost.
             </p>
             <div className="flex justify-end gap-2">
               <button className="btn" autoFocus onClick={() => setPending(null)}>
@@ -273,16 +280,17 @@ export function ImportButton() {
                   setPending(null);
                 }}
               >
-                Add to workspace
+                Add to this workspace
               </button>
               <button
                 className="btn btn-primary"
+                title="Keep this workspace as it is and open the file as a separate workspace."
                 onClick={() => {
-                  pending.apply();
+                  pending.asNew();
                   setPending(null);
                 }}
               >
-                Replace
+                New workspace
               </button>
             </div>
           </div>

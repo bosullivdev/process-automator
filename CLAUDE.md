@@ -184,7 +184,7 @@ Columns in order: No (read-only), Name, Owner, Type, Next, Technology, Contribut
 
 - Desktop: resizable split pane, table left, map right, `splitRatio` persisted. Validation panel is a collapsible drawer under the table. Party registry opens as a side sheet from the header.
 - Below 900 px viewport width: table and map become two tabs. Never show a two-pane layout on narrow screens.
-- Header: app name placeholder, process switcher, orientation toggle, shape mode toggle, theme toggle, undo/redo, parties, import, export menu, saved indicator.
+- Header: app name placeholder, workspace switcher, process switcher, orientation toggle, shape mode toggle, theme toggle, undo/redo, parties, import, export menu, saved indicator.
 
 ## Rendering
 
@@ -218,8 +218,8 @@ Same data, different shapes. Nothing is stored per mode.
 
 ## Persistence and export
 
-- Autosave: debounced 500 ms write of the whole workspace to IndexedDB, one record per browser profile. Header shows "Saved" / "Saving" / "Unsaved changes". Show a one-time dismissible notice that browser storage can be cleared and export is the real save.
-- Import: file picker for JSON. Run `migrate`. If the current workspace has unsaved differences from its autosave, or is non-empty, ask: replace, or cancel. Never merge silently.
+- Autosave: debounced 500 ms write of the whole open workspace to IndexedDB, one record per workspace. A browser profile can hold several workspaces; the header's workspace switcher opens, renames, adds a blank one, and deletes (with confirm, permanent, not undoable). Deleting the last workspace creates a fresh empty one. Switching workspaces saves the open one first and clears undo history. Header shows "Saved" / "Saving" / "Unsaved changes". Show a one-time dismissible notice that browser storage can be cleared and export is the real save.
+- Import: file picker for JSON. Run `migrate`. If the current workspace has unsaved differences from its autosave, or is non-empty, ask: open the file as a new workspace, add its processes to this one, or cancel. Import never replaces a non-empty workspace and never merges silently.
 - Export JSON: pretty-printed workspace, filename `<workspace-name>-<date>.json`.
 - Export map: SVG, PNG (2x), PDF for the active process, in the current orientation and shape mode. Include a title block (process name, owner, version, date) and a lane legend. Fonts must be embedded or converted to paths in SVG and PDF so exports render identically elsewhere.
 - Before unload with unsaved changes, warn.

@@ -33,6 +33,7 @@ import {
   renameTeam as renameTeamPure,
   stepInTeam,
 } from "../model/team";
+import type { WorkspaceInfo } from "../persistence/db";
 import {
   createEmptyWorkspace,
   createProcess,
@@ -111,6 +112,9 @@ export interface StoreState extends DocState {
   selectedStepId: string | null;
   saveStatus: SaveStatus;
   hydrated: boolean;
+  /** The stored workspace that is open, and every workspace stored in this browser. */
+  workspaceId: string | null;
+  workspaceList: WorkspaceInfo[];
 
   // --- document edits (undoable)
   replaceWorkspace: (ws: Workspace) => void;
@@ -191,6 +195,7 @@ export interface StoreState extends DocState {
   selectStep: (stepId: string | null) => void;
   setSaveStatus: (s: SaveStatus) => void;
   hydrate: (ws: Workspace | undefined) => void;
+  setWorkspaces: (workspaceId: string | null, list: WorkspaceInfo[]) => void;
 }
 
 function touch(doc: DocState): void {
@@ -244,6 +249,8 @@ export const useStore = create<StoreState>()(
         selectedStepId: null,
         saveStatus: "saved",
         hydrated: false,
+        workspaceId: null,
+        workspaceList: [],
 
         replaceWorkspace: (ws) =>
           set({
@@ -634,11 +641,13 @@ export const useStore = create<StoreState>()(
                 ? base.view.activeProcessId
                 : (base.processes[0]?.id ?? null),
             },
+            selectedStepId: null,
             hydrated: true,
             saveStatus: "saved",
           });
           useStore.temporal.getState().clear();
         },
+        setWorkspaces: (workspaceId, workspaceList) => set({ workspaceId, workspaceList }),
       };
     },
     {

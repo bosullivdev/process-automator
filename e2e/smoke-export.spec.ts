@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 
-test("export svg/json and import with replace confirm", async ({ page }) => {
+test("export svg/json and import as a new workspace", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
@@ -94,7 +94,7 @@ test("export svg/json and import with replace confirm", async ({ page }) => {
   expect(exported.schemaVersion).toBe(1);
   expect(exported.processes[0].steps).toHaveLength(2);
 
-  // Import into a non-empty workspace asks to replace
+  // Import into a non-empty workspace asks: a new workspace, or add to this one
   exported.meta.name = "Imported WS";
   exported.processes[0].name = "Imported process";
   const importPath = jsonPath + ".import.json";
@@ -107,14 +107,20 @@ test("export svg/json and import with replace confirm", async ({ page }) => {
     page.getByTestId("process-switcher").getByLabel("Active process").locator("option:checked"),
   ).toHaveText("Process 1");
   await page.getByLabel("Import workspace file").setInputFiles(importPath);
-  await dlg.getByRole("button", { name: "Replace" }).click();
+  await dlg.getByRole("button", { name: "New workspace" }).click();
   await expect(
     page.getByTestId("process-switcher").getByLabel("Active process").locator("option:checked"),
   ).toHaveText("Imported process");
+  // The file is a workspace of its own; the one that was open is still there.
+  const wsButton = page.getByTestId("workspace-switcher");
+  await expect(wsButton).toHaveText(/Imported WS/);
+  await wsButton.click();
+  await expect(page.getByRole("menuitemradio")).toHaveText(["Imported WS", "Untitled workspace"]);
+  await page.keyboard.press("Escape");
 
   // Adding the same file keeps the current process and adds the file's beside it
   await page.getByLabel("Import workspace file").setInputFiles(importPath);
-  await dlg.getByRole("button", { name: "Add to workspace" }).click();
+  await dlg.getByRole("button", { name: "Add to this workspace" }).click();
   const options = page
     .getByTestId("process-switcher")
     .getByLabel("Active process")

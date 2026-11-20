@@ -51,6 +51,17 @@ export function createEmptyWorkspace(name = "Untitled workspace"): Workspace {
   };
 }
 
+/** `base`, or `base 2`, `base 3`… when a workspace is already called that (ignoring case). */
+export function uniqueName(base: string, taken: string[]): string {
+  const norm = (n: string) => n.trim().toLowerCase();
+  const used = new Set(taken.map(norm));
+  const name = base.trim() || "Untitled workspace";
+  if (!used.has(norm(name))) return name;
+  let n = 2;
+  while (used.has(norm(`${name} ${n}`))) n++;
+  return `${name} ${n}`;
+}
+
 export function isWorkspaceEmpty(ws: Workspace): boolean {
   return (
     ws.parties.length === 0 &&

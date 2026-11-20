@@ -104,12 +104,23 @@ a static site.
   (workspace-wide), merge, delete (blocked while referenced), colour override.
 - **Processes**: the header switcher adds, renames, duplicates and deletes
   processes.
-- **Saving**: the workspace autosaves to IndexedDB in this browser. Browser
-  storage can be cleared, so use Export → Workspace JSON for a real copy and
-  Import to load it again. Importing into a workspace that already has
-  content asks whether to **add** the file's processes beside the current
-  ones (parties and teams with the same name are shared; the rest are
-  created) or **replace** the workspace with the file. Adding is undoable.
+- **Workspaces**: the browser can hold several workspaces, each with its own
+  processes, parties and teams. The button showing the workspace name in the
+  header lists them: pick one to open it, rename the open one, start a
+  **new blank workspace** (no parties, teams or steps; it keeps only the
+  theme, orientation and other view settings), or **delete** the open one.
+  Deleting asks first, removes the workspace from the browser for good and
+  cannot be undone; deleting the last one leaves a fresh empty workspace.
+  Undo history does not carry from one workspace to another.
+- **Saving**: the open workspace autosaves to IndexedDB in this browser, one
+  record per workspace. Browser storage can be cleared, so use Export →
+  Workspace JSON for a real copy and Import to load it again. Importing while
+  the open workspace has content asks whether to open the file as a **new
+  workspace** beside the others, or to **add** the file's processes to the
+  open one (parties and teams with the same name are shared; the rest are
+  created; undoable). Import never replaces a workspace that has content; a
+  file imported into a blank workspace simply fills it. A new or imported
+  workspace whose name is taken gets a number after it.
 - **Export**: the active process map as SVG, PNG (2x) or PDF, with a title
   block and a legend of every party on the map, owners and contributors alike.
   With a team highlighted or isolated, the export shows exactly what the map
